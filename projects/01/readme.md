@@ -1,5 +1,7 @@
 * Not
+
 Nandの表の一部
+
 | a | b | out |
 | ---- | ---- | ---- |
 | 0 | 0 | 1 |
@@ -13,6 +15,7 @@ in-------a----Nand----out
 
 * And
 Nandの表
+
 | a | b | out |
 | ---- | ---- | ---- |
 | 0 | 0 | 1 |
@@ -21,6 +24,7 @@ Nandの表
 | 1 | 1 | 0 |
 
 Andの表
+
 | a | b | out |
 | ---- | ---- | ---- |
 | 0 | 0 | 0 |
@@ -32,6 +36,7 @@ Andの表
 
 * Or
 Nandの表
+
 | a | b | out |
 | ---- | ---- | ---- |
 | 0 | 0 | 1 |
@@ -40,6 +45,7 @@ Nandの表
 | 1 | 1 | 0 |
 
 Orの表
+
 | a | b | out |
 | ---- | ---- | ---- |
 | 0 | 0 | 0 |
@@ -59,6 +65,7 @@ f(a,b) = a * not(b) + not(a) * b
 f(a,b,sel) = x * not(y) * not(z) + x * y * not(z) + not(x) * y * z + x * y *z 
 
 * DMux
+
 | in | sel | a |
 | ---- | ---- | ---- |
 | 0 | 0 | 0 |
@@ -78,15 +85,17 @@ f(in,sel) = in * not(sel)
 f(in,sel) = in * sel
 
 * Mux4Way16
+
 a-------Mux-------Mux-------out
-    |    ^     |   ^
-b----   sel[1] |  sel[0]
+     |   ^     |   ^
+b----- sel[1]  | sel[0]
                |
 c-------Mux-----
     |    ^
 d----   sel[1]
 
 * DMux4Way
+* 
 DMux-------DMux-------a
   ^    |     ^    |
 sel[1] |   sel[0] |
