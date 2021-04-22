@@ -95,7 +95,7 @@ c-------Mux-----
 d----   sel[1]
 
 * DMux4Way
-* 
+
 DMux-------DMux-------a
   ^    |     ^    |
 sel[1] |   sel[0] |
