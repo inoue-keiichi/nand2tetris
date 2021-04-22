@@ -1,4 +1,4 @@
-* Not
+# Not
 
 Nandの表の一部
 
@@ -13,7 +13,7 @@ in-------a----Nand----out
      |         |
      ----b------
 
-* And
+# And
 Nandの表
 
 | a | b | out |
@@ -34,7 +34,7 @@ Andの表
 
 表からAnd(a,b)=Not(Nand(a,b))
 
-* Or
+# Or
 Nandの表
 
 | a | b | out |
@@ -58,13 +58,15 @@ Or(0,1)=Nand(1,0)
 Or(1,0)=Nand(0,1)
 なので、Or(a,b)=Nand(Not(a),Not(b))が成り立つ。
 
-* Xor
+# Xor
+
 f(a,b) = a * not(b) + not(a) * b
 
-* Mux
+# Mux
+
 f(a,b,sel) = x * not(y) * not(z) + x * y * not(z) + not(x) * y * z + x * y *z 
 
-* DMux
+# DMux
 
 | in | sel | a |
 | ---- | ---- | ---- |
@@ -84,7 +86,7 @@ f(in,sel) = in * not(sel)
 
 f(in,sel) = in * sel
 
-* Mux4Way16
+# Mux4Way16
 
 a-------Mux-------Mux-------out
      |   ^     |   ^
@@ -94,7 +96,7 @@ c-------Mux-----
     |    ^
 d----   sel[1]
 
-* DMux4Way
+# DMux4Way
 
 DMux-------DMux-------a
   ^    |     ^    |
