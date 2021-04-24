@@ -9,9 +9,11 @@ Nandの表の一部
 
 Notは、 a=b ならば out=1 なのでNandに同じ値を入力する
 
+<pre>
 in-------a----Nand----out
      |         |
      ----b------
+</pre>
 
 # And
 Nandの表
@@ -88,6 +90,7 @@ f(in,sel) = in * sel
 
 # Mux4Way16
 
+<pre>
 a-------Mux-------Mux-------out
      |   ^     |   ^
 b----- sel[1]  | sel[0]
@@ -95,9 +98,11 @@ b----- sel[1]  | sel[0]
 c-------Mux-----
     |    ^
 d----   sel[1]
+</pre>
 
 # DMux4Way
 
+<pre>
 DMux-------DMux-------a
   ^    |     ^    |
 sel[1] |   sel[0] |
@@ -106,3 +111,4 @@ sel[1] |   sel[0] |
              ^    |
            sel[0] |
                   ----d
+</pre>
