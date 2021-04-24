@@ -86,7 +86,7 @@ f(in,sel) = in * not(sel)
 | 1 | 0 | 0 |
 | 0 | 1 | 0 |
 
-f(in,sel) = in * sel
+g(in,sel) = in * sel
 
 # Mux4Way16
 
