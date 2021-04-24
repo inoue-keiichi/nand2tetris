@@ -103,12 +103,12 @@ d----   sel[1]
 # DMux4Way
 
 <pre>
-DMux-------DMux-------a
-  ^    |     ^    |
-sel[1] |   sel[0] |
-       |          ----b
-       ----Dmux-------c
-             ^    |
-           sel[0] |
-                  ----d
+in-----DMux-------DMux-------a
+         ^    |     ^    |
+       sel[1] |   sel[0] |
+              |          ----b
+              ----Dmux-------c
+                   ^    |
+                 sel[0] |
+                         ----d
 </pre>
