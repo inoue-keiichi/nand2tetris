@@ -1,0 +1,5 @@
+.DS_Store
+projects/.gradle/
+projects/.project
+projects/.settings/
+tools/
