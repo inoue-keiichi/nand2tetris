@@ -10,3 +10,29 @@
 // R0 >= 0, R1 >= 0, and R0*R1 < 32768.
 
 // Put your code here.
+
+// Computes R2=R0*R1
+@i // i=0
+M=0
+@R2 // R2=0
+M=0
+@R1 // R1代入
+D=M
+(LOOP)
+@i // if (i-R1)>=0 goto END
+D=M
+@R1
+D=D-M
+@END
+D;JGE
+@R0 // sum+=R0
+D=M
+@R2
+M=D+M
+@i // i++
+M=M+1
+@LOOP // goto LOOP
+0;JMP
+(END) // infinite loop
+@END
+0;JMP
