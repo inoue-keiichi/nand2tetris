@@ -39,5 +39,46 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    // Aレジスタに入れるデータを決める
+    Mux16(a=instruction,b=alu2,sel=instruction[15],out=v);
+
+    // A命令 or d1=true ならAレジスタにデータを保存する
+    Not(in=instruction[15],out=insA);
+    Or(a=insA,b=instruction[5],out=decodeA);
+    ARegister(in=v,load=decodeA,out=a1,out=a2,out[0..14]=addressM);
+
+    // A or M
+    // C命令である必要がある
+    And(a=instruction[15],b=instruction[12],out=decodeAM);
+    Mux16(a=a1,b=inM,sel=decodeAM,out=am);
+
+    // A命令だったらALUの関数はx&yにしたい
+    And(a=instruction[15],b=instruction[11],out=decodeZx);
+    And(a=instruction[15],b=instruction[10],out=decodeNx);
+    And(a=instruction[15],b=instruction[9],out=decodeZy);
+    And(a=instruction[15],b=instruction[8],out=decodeNy);
+    And(a=instruction[15],b=instruction[7],out=decodeF);
+    And(a=instruction[15],b=instruction[6],out=decodeNo);
+    // 計算を行う関数を決める
+    ALU(x=d,y=am,zx=decodeZx,nx=decodeNx,zy=decodeZy,ny=decodeNy,f=decodeF,no=decodeNo,out=alu1,out=alu2,out=outM,zr=aluZr,ng=aluNg);
+    
+    And(a=instruction[15],b=instruction[4],out=decodeD);
+    DRegister(in=alu1,load=decodeD,out=d);
+
+    // A命令だったらjumpしない
+    And(a=instruction[15],b=instruction[2],out=decodeJ1);
+    And(a=instruction[15],b=instruction[1],out=decodeJ2);
+    And(a=instruction[15],b=instruction[0],out=decodeJ3);
+    And(a=decodeJ1,b=aluNg,out=jumpNg);
+    And(a=decodeJ2,b=aluZr,out=jumpZr);
+    Or(a=aluNg,b=aluZr,out=w);
+    Not(in=w,out=aluPs);
+    And(a=decodeJ3,b=aluPs,out=jumpPs);
+    Or(a=jumpNg,b=jumpZr,out=jumpNgZr);
+    Or(a=jumpNgZr,b=jumpPs,out=jump,out=tmp);
+    Not(in=tmp,out=decodeInc);
+    // C命令である必要がある
+    PC(in=a2,load=jump,inc=decodeInc,reset=reset,out[0..14]=pc);
+
+    And(a=instruction[15],b=instruction[3],out=writeM);
 }
