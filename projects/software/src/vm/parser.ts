@@ -1,7 +1,13 @@
 import * as fs from 'fs';
 import * as readline from 'readline';
-import { Command } from '../types/command';
-import { VMLine, CommandType } from './types/commandType';
+import {
+    Arithmetic,
+    ArithmeticCommand,
+    isMemoryAccess,
+    MemoryAccess,
+    Segment,
+    VMLine,
+} from './types/commandType';
 
 export class Parser {
     private lines: string[];
@@ -30,14 +36,12 @@ export class Parser {
             if (line === '' || /(^\s+$)|(^\s*\/\/.*$)/.test(line)) {
                 continue;
             }
-            //const elimatedLine = line.replace(/\s/g, '').replace(/\/\/.*/, '');
             this.lines.push(line);
         }
     };
 
     advance = () => {
         this.command = this.lines[this.next++];
-        //console.log(this.command);
     };
 
     getCommand = (): VMLine => {
@@ -45,45 +49,34 @@ export class Parser {
             throw new Error("you don't have more commands.");
         }
         switch (true) {
-            case /^push[\s\w]+$/.test(this.command):
-                const match = /^push\s(\w+)\s(\d+)$/.exec(this.command);
-                if (match !== null) {
-                    console.log('command: ' + match[0]);
-                    return {
-                        command: 'push',
-                        segment: match[1],
-                        arg: match[2],
-                    };
-                }
-                throw new Error('invalid command: ' + this.command);
-            // case /^pop[\s\w]+$/.test(this.command):
-            //     return 'C_POP';
-            // case /^label[\s\w]+$/.test(this.command):
-            //     return 'C_LABEL';
-            // case /^goto[\s\w]+$/.test(this.command):
-            //     return 'C_GOTO';
-            // case /^if[\s\w]+$/.test(this.command):
-            //     return 'C_IF';
-            // case /^function[\s\w]+$/.test(this.command):
-            //     return 'C_FUNCTION';
-            // case /^return[\s\w]+$/.test(this.command):
-            //     return 'C_RETURN';
-            // case /^return[\s\w]+$/.test(this.command):
-            //     return 'C_CALL';
+            case /^(push|pop)[\s\w]+$/.test(this.command):
+                return this.createMemoryAccess(this.command);
             case /^add|sub|neg|eq|gt|lt|and|or|not$/.test(this.command):
-                const match1 = /^(add|sub|neg|eq|gt|lt|and|or|not)$/.exec(
-                    this.command
-                );
-                if (match1 !== null) {
-                    return {
-                        command: match1[0],
-                    };
-                }
-                throw new Error('invalid command: ' + this.command);
+                return this.createArithmetic(this.command);
             default:
                 throw new Error('invalid command: ' + this.command);
         }
     };
 
-    private hoge() {}
+    private createMemoryAccess(command: string): MemoryAccess {
+        const match = /^(push|pop)\s(\w+)\s(\d+)$/.exec(command);
+        if (match !== null && isMemoryAccess(match[1])) {
+            return {
+                command: match[1],
+                segment: match[2] as Segment,
+                arg: match[3],
+            };
+        }
+        throw new Error('invalid vm line: ' + this.command);
+    }
+
+    private createArithmetic(command: string): Arithmetic {
+        const match = /^(add|sub|neg|eq|gt|lt|and|or|not)$/.exec(command);
+        if (match !== null) {
+            return {
+                command: match[1] as ArithmeticCommand,
+            };
+        }
+        throw new Error('invalid vm line: ' + this.command);
+    }
 }

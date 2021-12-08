@@ -1,45 +1,54 @@
-export type CommandType =
-    | 'C_ARITHMETIC'
-    | 'C_PUSH'
-    | 'C_POP'
-    | 'C_LABEL'
-    | 'C_GOTO'
-    | 'C_IF'
-    | 'C_FUNCTION'
-    | 'C_RETURN'
-    | 'C_CALL';
+export type VMLine = Arithmetic | MemoryAccess;
 
-export interface VMLine {
-    command: string;
-    segment?: string;
-    arg?: string;
+export interface Arithmetic {
+    command: ArithmeticCommand;
 }
 
-export type Segment =
-    | 'local'
-    | 'argument'
-    | 'this'
-    | 'that'
-    | 'pointer'
-    | 'temp'
-    | 'constant'
-    | 'static';
+export interface MemoryAccess {
+    command: MemoryAccessCommand;
+    segment: Segment;
+    arg: string;
+}
 
-export type Command =
-    | 'add'
-    | 'sub'
-    | 'neg'
-    | 'eq'
-    | 'gt'
-    | 'lt'
-    | 'and'
-    | 'or'
-    | 'not'
-    | 'push'
-    | 'pop'
-    | 'label'
-    | 'goto'
-    | 'if'
-    | 'function'
-    | 'return'
-    | 'call';
+export type ArithmeticCommand = typeof arithmetic[number];
+
+export type MemoryAccessCommand = typeof memoryAccess[number];
+
+export type Segment = typeof segment[number];
+
+export function isArithmetic(arg: any): arg is ArithmeticCommand {
+    return arg in arithmetic;
+}
+
+export function isMemoryAccess(arg: any): arg is MemoryAccessCommand {
+    return arg in memoryAccess;
+}
+
+export function isSegment(arg: any): arg is Segment {
+    return arg in segment;
+}
+
+const arithmetic = [
+    'add',
+    'sub',
+    'neg',
+    'eq',
+    'gt',
+    'lt',
+    'and',
+    'or',
+    'not',
+] as const;
+
+const memoryAccess = ['pop', 'push'] as const;
+
+const segment = [
+    'local',
+    'argument',
+    'this',
+    'that',
+    'pointer',
+    'temp',
+    'constant',
+    'static',
+] as const;
