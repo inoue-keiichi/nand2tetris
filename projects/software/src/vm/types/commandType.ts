@@ -17,15 +17,15 @@ export type MemoryAccessCommand = typeof memoryAccess[number];
 export type Segment = typeof segment[number];
 
 export function isArithmetic(arg: any): arg is ArithmeticCommand {
-    return arg in arithmetic;
+    return arithmetic.some((e) => e === arg);
 }
 
 export function isMemoryAccess(arg: any): arg is MemoryAccessCommand {
-    return arg in memoryAccess;
+    return memoryAccess.some((e) => e === arg);
 }
 
 export function isSegment(arg: any): arg is Segment {
-    return arg in segment;
+    return segment.some((e) => e === arg);
 }
 
 const arithmetic = [

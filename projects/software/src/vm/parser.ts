@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import * as readline from 'readline';
 import {
     Arithmetic,
-    ArithmeticCommand,
+    isArithmetic,
     isMemoryAccess,
+    isSegment,
     MemoryAccess,
-    Segment,
     VMLine,
 } from './types/commandType';
 
@@ -60,10 +60,10 @@ export class Parser {
 
     private createMemoryAccess(command: string): MemoryAccess {
         const match = /^(push|pop)\s(\w+)\s(\d+)$/.exec(command);
-        if (match !== null && isMemoryAccess(match[1])) {
+        if (match !== null && isMemoryAccess(match[1]) && isSegment(match[2])) {
             return {
                 command: match[1],
-                segment: match[2] as Segment,
+                segment: match[2],
                 arg: match[3],
             };
         }
@@ -72,9 +72,9 @@ export class Parser {
 
     private createArithmetic(command: string): Arithmetic {
         const match = /^(add|sub|neg|eq|gt|lt|and|or|not)$/.exec(command);
-        if (match !== null) {
+        if (match !== null && isArithmetic(match[1])) {
             return {
-                command: match[1] as ArithmeticCommand,
+                command: match[1],
             };
         }
         throw new Error('invalid vm line: ' + this.command);
