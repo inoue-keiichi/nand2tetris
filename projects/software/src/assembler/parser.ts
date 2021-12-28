@@ -1,9 +1,6 @@
-import { Command } from '../types/command';
-import { Mnemonic } from '../types/mnemonic';
+import { Command } from './types/command';
 import * as fs from 'fs';
-import { Code } from './code';
 import * as readline from 'readline';
-import { isThisTypeNode } from 'typescript';
 
 export class Parser {
     private lines: string[];
