@@ -1,34 +1,34 @@
-export type VMLine = Arithmetic | MemoryAccess;
-
-export interface Arithmetic {
-    command: ArithmeticCommand;
+export interface VMLine {
+    command: Command | SegmentCommand | SegmentArgCommand;
+    segment?: Segment;
+    arg?: string;
 }
 
-export interface MemoryAccess {
-    command: MemoryAccessCommand;
-    segment: Segment;
-    arg: string;
-}
+export type Command = typeof command[number];
 
-export type ArithmeticCommand = typeof arithmetic[number];
+export type SegmentCommand = typeof segmentCommand[number];
 
-export type MemoryAccessCommand = typeof memoryAccess[number];
+export type SegmentArgCommand = typeof segmentArgCommand[number];
 
 export type Segment = typeof segment[number];
 
-export function isArithmetic(arg: any): arg is ArithmeticCommand {
-    return arithmetic.some((e) => e === arg);
+export function isCommand(arg: any): arg is Command {
+    return command.some((e) => e === arg);
 }
 
-export function isMemoryAccess(arg: any): arg is MemoryAccessCommand {
-    return memoryAccess.some((e) => e === arg);
+export function isSegmentCommand(arg: any): arg is SegmentCommand {
+    return segmentCommand.some((e) => e === arg);
+}
+
+export function isSegmentArgCommand(arg: any): arg is SegmentArgCommand {
+    return segmentArgCommand.some((e) => e === arg);
 }
 
 export function isSegment(arg: any): arg is Segment {
     return segment.some((e) => e === arg);
 }
 
-const arithmetic = [
+export const command = [
     'add',
     'sub',
     'neg',
@@ -38,9 +38,12 @@ const arithmetic = [
     'and',
     'or',
     'not',
+    'return',
 ] as const;
 
-const memoryAccess = ['pop', 'push'] as const;
+export const segmentCommand = ['label', 'goto', 'if-goto'] as const;
+
+export const segmentArgCommand = ['pop', 'push'] as const;
 
 const segment = [
     'local',

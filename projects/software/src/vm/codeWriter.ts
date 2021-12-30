@@ -1,15 +1,13 @@
 import * as fs from 'fs';
-import { MemoryAccess, VMLine } from './types/commandType';
+import { VMLine } from './types/commandType';
 
 export class CodeWriter {
-    private command: string | null;
     private fileName: string;
     private ws: fs.WriteStream;
 
     private jump: number;
 
     constructor(fileName: string) {
-        this.command = null;
         this.fileName = fileName;
         this.ws = fs.createWriteStream(fileName.replace(/\.vm/, '.asm'));
         this.writeLF('@256');
@@ -75,8 +73,20 @@ export class CodeWriter {
             case 'not':
                 this.writeNot();
                 break;
+            case 'label':
+                this.writeLabel(vm);
+                break;
+            case 'if-goto':
+                this.writeIfGoto(vm);
+                break;
+            case 'goto':
+                this.writeGoto(vm);
+                break;
+            case 'return':
+                this.writeReturn();
+                break;
             default:
-                throw new Error('invalid command: ' + this.command);
+                throw new Error('invalid command: ' + vm.command);
         }
     };
 
@@ -84,7 +94,7 @@ export class CodeWriter {
         this.ws.write(`${line}\r\n`);
     }
 
-    private writePush(vm: MemoryAccess) {
+    private writePush(vm: VMLine) {
         switch (vm.segment) {
             case 'constant':
                 this.writeLF(`@${vm.arg}`);
@@ -210,7 +220,7 @@ export class CodeWriter {
         }
     }
 
-    private writePop(vm: MemoryAccess) {
+    private writePop(vm: VMLine) {
         switch (vm.segment) {
             case 'local':
                 this.writeLF(`@${vm.arg}`);
@@ -377,6 +387,26 @@ export class CodeWriter {
 
         this.jump++;
     }
+
+    private writeLabel(vm: VMLine) {
+        this.writeLF(`(${vm.arg})`);
+    }
+
+    private writeIfGoto(vm: VMLine) {
+        this.writeLF('@SP');
+        this.writeLF('M=M-1');
+        this.writeLF('A=M');
+        this.writeLF('D=M');
+        this.writeLF(`@${vm.arg}`);
+        this.writeLF('D;JNE');
+    }
+
+    private writeGoto(vm: VMLine) {
+        this.writeLF(`@${vm.arg}`);
+        this.writeLF('0;JMP');
+    }
+
+    private writeReturn() {}
 
     private writeGt() {
         this.writeLF('@SP');
