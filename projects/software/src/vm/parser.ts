@@ -2,13 +2,15 @@ import * as fs from 'fs';
 import * as readline from 'readline';
 import {
     isCommand,
-    isSegmentCommand,
+    isArgCommand as isArgCommand,
     isSegmentArgCommand,
     isSegment,
     VMLine,
     segmentArgCommand,
     command,
-    segmentCommand,
+    argCommand,
+    isFunctionCommand,
+    functionCommand,
 } from './types/commandType';
 
 export class Parser {
@@ -18,11 +20,14 @@ export class Parser {
     private reader: readline.Interface;
 
     private static COMMAND = new RegExp(`^(${command.join('|')})$`);
-    private static SEGMENT_COMMAND = new RegExp(
-        `^(${segmentCommand.join('|')})\\s(\\w+)$`
+    private static ARG_COMMAND = new RegExp(
+        `^(${argCommand.join('|')})\\s(\\w+)$`
     );
     private static SEGMENT_ARG_COMMAND = new RegExp(
         `^(${segmentArgCommand.join('|')})\\s(\\w+)\\s(\\d+)$`
+    );
+    private static FUNCTION_COMMAND = new RegExp(
+        `^(${functionCommand.join('|')})\\s(\\w+\\.\\w+)\\s(\\d+)$`
     );
 
     constructor(readStream: fs.ReadStream) {
@@ -63,20 +68,34 @@ export class Parser {
             throw new Error("you don't have more commands.");
         }
         switch (true) {
-            case Parser.SEGMENT_ARG_COMMAND.test(this.command):
-                return this.createMemoryAccess(this.command);
             case Parser.COMMAND.test(this.command):
-                return this.createArithmetic(this.command);
-            case Parser.SEGMENT_COMMAND.test(this.command):
-                return this.createControl(this.command);
+                return this.createCommand(this.command);
+            case Parser.ARG_COMMAND.test(this.command):
+                return this.createArgCommand(this.command);
+            case Parser.SEGMENT_ARG_COMMAND.test(this.command):
+                return this.createSegmentArgCommand(this.command);
+            case Parser.FUNCTION_COMMAND.test(this.command):
+                return this.createFunction(this.command);
             default:
                 throw new Error('invalid command: ' + this.command);
         }
     };
 
-    private createControl(command: string): VMLine {
-        const match = Parser.SEGMENT_COMMAND.exec(command);
-        if (match !== null && isSegmentCommand(match[1])) {
+    private createFunction(command: string): VMLine {
+        const match = Parser.FUNCTION_COMMAND.exec(command);
+        if (match !== null && isFunctionCommand(match[1])) {
+            return {
+                command: match[1],
+                funcName: match[2],
+                arg: match[3],
+            };
+        }
+        throw new Error('invalid vm line: ' + this.command);
+    }
+
+    private createArgCommand(command: string): VMLine {
+        const match = Parser.ARG_COMMAND.exec(command);
+        if (match !== null && isArgCommand(match[1])) {
             return {
                 command: match[1],
                 arg: match[2],
@@ -85,7 +104,7 @@ export class Parser {
         throw new Error('invalid vm line: ' + this.command);
     }
 
-    private createMemoryAccess(command: string): VMLine {
+    private createSegmentArgCommand(command: string): VMLine {
         const match = Parser.SEGMENT_ARG_COMMAND.exec(command);
         if (
             match !== null &&
@@ -101,7 +120,7 @@ export class Parser {
         throw new Error('invalid vm line: ' + this.command);
     }
 
-    private createArithmetic(command: string): VMLine {
+    private createCommand(command: string): VMLine {
         const match = Parser.COMMAND.exec(command);
         if (match !== null && isCommand(match[1])) {
             return {

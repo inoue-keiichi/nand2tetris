@@ -1,5 +1,10 @@
 import * as fs from 'fs';
-import { VMLine } from './types/commandType';
+import {
+    FunctionLine,
+    SegmentArgLine,
+    ArgLine,
+    VMLine,
+} from './types/commandType';
 
 export class CodeWriter {
     private fileName: string;
@@ -10,26 +15,27 @@ export class CodeWriter {
     constructor(fileName: string) {
         this.fileName = fileName;
         this.ws = fs.createWriteStream(fileName.replace(/\.vm/, '.asm'));
-        this.writeLF('@256');
-        this.writeLF('D=A');
-        this.writeLF('@SP');
-        this.writeLF('M=D');
-        this.writeLF('@300');
-        this.writeLF('D=A');
-        this.writeLF('@LCL');
-        this.writeLF('M=D');
-        this.writeLF('@400');
-        this.writeLF('D=A');
-        this.writeLF('@ARG');
-        this.writeLF('M=D');
-        this.writeLF('@3000');
-        this.writeLF('D=A');
-        this.writeLF('@THIS');
-        this.writeLF('M=D');
-        this.writeLF('@3010');
-        this.writeLF('D=A');
-        this.writeLF('@THAT');
-        this.writeLF('M=D');
+        this.writeInit();
+        // this.writeLF('@256');
+        // this.writeLF('D=A');
+        // this.writeLF('@SP');
+        // this.writeLF('M=D');
+        // this.writeLF('@300');
+        // this.writeLF('D=A');
+        // this.writeLF('@LCL');
+        // this.writeLF('M=D');
+        // this.writeLF('@400');
+        // this.writeLF('D=A');
+        // this.writeLF('@ARG');
+        // this.writeLF('M=D');
+        // this.writeLF('@3000');
+        // this.writeLF('D=A');
+        // this.writeLF('@THIS');
+        // this.writeLF('M=D');
+        // this.writeLF('@3010');
+        // this.writeLF('D=A');
+        // this.writeLF('@THAT');
+        // this.writeLF('M=D');
 
         this.jump = 0;
     }
@@ -37,6 +43,14 @@ export class CodeWriter {
     setFileName = (fileName: string) => {
         this.fileName = fileName;
     };
+
+    private writeInit() {
+        this.writeLF('@SP');
+        this.writeLF('@256');
+        this.writeLF('D=A');
+        this.writeLF('@SP');
+        this.writeLF('M=D');
+    }
 
     write = (vm: VMLine) => {
         switch (vm.command) {
@@ -85,8 +99,12 @@ export class CodeWriter {
             case 'return':
                 this.writeReturn();
                 break;
-            default:
-                throw new Error('invalid command: ' + vm.command);
+            case 'function':
+                this.writeFunction(vm);
+                break;
+            case 'call':
+                this.writeCall(vm);
+                break;
         }
     };
 
@@ -94,7 +112,7 @@ export class CodeWriter {
         this.ws.write(`${line}\r\n`);
     }
 
-    private writePush(vm: VMLine) {
+    private writePush(vm: SegmentArgLine) {
         switch (vm.segment) {
             case 'constant':
                 this.writeLF(`@${vm.arg}`);
@@ -220,7 +238,7 @@ export class CodeWriter {
         }
     }
 
-    private writePop(vm: VMLine) {
+    private writePop(vm: SegmentArgLine) {
         switch (vm.segment) {
             case 'local':
                 this.writeLF(`@${vm.arg}`);
@@ -388,11 +406,11 @@ export class CodeWriter {
         this.jump++;
     }
 
-    private writeLabel(vm: VMLine) {
+    private writeLabel(vm: ArgLine) {
         this.writeLF(`(${vm.arg})`);
     }
 
-    private writeIfGoto(vm: VMLine) {
+    private writeIfGoto(vm: ArgLine) {
         this.writeLF('@SP');
         this.writeLF('M=M-1');
         this.writeLF('A=M');
@@ -401,12 +419,82 @@ export class CodeWriter {
         this.writeLF('D;JNE');
     }
 
-    private writeGoto(vm: VMLine) {
+    private writeGoto(vm: ArgLine) {
         this.writeLF(`@${vm.arg}`);
         this.writeLF('0;JMP');
     }
 
-    private writeReturn() {}
+    private writeFunction(vm: FunctionLine) {
+        for (let i = 0; i < parseInt(vm.arg); i++) {
+            this.writeLF('@SP');
+            this.writeLF('A=M');
+            this.writeLF('M=0');
+            this.writeLF('@SP');
+            this.writeLF('M=M+1');
+        }
+    }
+
+    private writeReturn() {
+        this.writeLF('@LCL');
+        this.writeLF('D=M');
+        this.writeLF('@R13');
+        this.writeLF('M=D');
+
+        this.writePop({ command: 'pop', segment: 'argument', arg: '0' });
+
+        this.writeLF('@SP');
+        this.writeLF('M=D');
+        this.writeLF('@ARG');
+        this.writeLF('D=M+1');
+        this.writeLF('@SP');
+        this.writeLF('M=D');
+
+        this.writeLF('@R13');
+        this.writeLF('A=M-1');
+        this.writeLF('D=M');
+        this.writeLF('@THAT');
+        this.writeLF('M=D');
+
+        this.writeLF('@R13');
+        this.writeLF('A=M-1');
+        this.writeLF('A=A-1');
+        this.writeLF('D=M');
+        this.writeLF('@THIS');
+        this.writeLF('M=D');
+
+        this.writeLF('@R13');
+        this.writeLF('A=M-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('D=M');
+        this.writeLF('@ARG');
+        this.writeLF('M=D');
+
+        this.writeLF('@R13');
+        this.writeLF('A=M-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('D=M');
+        this.writeLF('@LCL');
+        this.writeLF('M=D');
+
+        this.writeLF('@R13');
+        this.writeLF('A=M-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('D=M');
+        this.writeLF('@R14');
+        this.writeLF('M=D');
+
+        // this.writeLF('@R14');
+        // this.writeLF('A=M');
+        // this.writeLF('0;JMP');
+    }
+
+    private writeCall(vm: VMLine) {}
 
     private writeGt() {
         this.writeLF('@SP');
