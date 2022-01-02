@@ -1,36 +1,29 @@
-import * as fs from 'fs';
-import * as pathModule from 'path';
 import { CodeWriter } from './codeWriter';
+import { createFileInfo, FileInfo } from './fileInfoCreater';
 import { Parser } from './parser';
+import * as fs from 'fs';
 
-const paths = buildPaths(process.argv[2]);
-const codeWriter = new CodeWriter(process.argv[2]);
-for (let path of paths) {
-    convert(path);
+const fileInfos = createFileInfo(process.argv[2]);
+if (
+    fileInfos.length > 1 &&
+    !fileInfos.some((fileInfo) => /Sys\.vm/.test(fileInfo.basename))
+) {
+    throw new Error('Not Found Sys.vm');
 }
+const codeWriter =
+    fileInfos.length > 1
+        ? new CodeWriter(process.argv[2])
+        : new CodeWriter(process.argv[2], false);
+write(fileInfos);
 
-function buildPaths(str: string): string[] {
-    const files = fs.statSync(str).isFile()
-        ? [str]
-        : fs.readdirSync(str).filter((file) => /\w+\.vm/.test(file));
-    const directory = `${pathModule.dirname(str)}/${pathModule.basename(
-        process.argv[2]
-    )}`;
-    return files.map((file) => convertPath(file, directory));
-}
+async function write(fileInfos: FileInfo[]) {
+    for (let fileInfo of fileInfos) {
+        const parser = await new Parser(fs.createReadStream(fileInfo.path));
 
-function convertPath(file: string, directory: string): string {
-    if (/\w+\/\w+\.vm/.test(file)) {
-        return file;
-    }
-    return `${directory}/${file}`;
-}
-
-async function convert(path: string) {
-    const rs = fs.createReadStream(path);
-    const parser = new Parser(rs);
-    while (await parser.hasMoreCommands()) {
-        parser.advance();
-        codeWriter.write(parser.getCommand());
+        codeWriter.filename = fileInfo.basename;
+        while (await parser.hasMoreCommands()) {
+            parser.advance();
+            codeWriter.writeLine(parser.getCommand());
+        }
     }
 }

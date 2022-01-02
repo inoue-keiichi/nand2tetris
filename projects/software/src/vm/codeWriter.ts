@@ -1,28 +1,32 @@
 import * as fs from 'fs';
 import * as pathModule from 'path';
-import { sys } from 'typescript';
-import {
-    FunctionLine,
-    SegmentArgLine,
-    ArgLine,
-    VMLine,
-} from './types/commandType';
+import { FunctionArg, TwoArg, OneArg, CommandType } from './types/commandType';
 
 export class CodeWriter {
-    private fileName: string;
+    private _filename: string;
     private ws: fs.WriteStream;
-    private funcName: string | null; // グローバルでユニークなラベルを作成する　=> funcName$label
+    private funcName: string | null;
 
     private jump: number;
     private returnAddress: number;
 
-    constructor(fileName: string) {
-        this.fileName = fileName;
+    constructor(outputFile: string, init = true) {
+        this._filename = outputFile;
         this.funcName = null;
         this.jump = 0;
         this.returnAddress = 0;
-        this.ws = fs.createWriteStream(this.createFileName(fileName));
-        this.writeInit();
+        this.ws = fs.createWriteStream(this.createFileName(outputFile));
+        if (init) {
+            this.writeInit();
+        }
+    }
+
+    set filename(filename: string) {
+        this._filename = filename;
+    }
+
+    get filename() {
+        return this._filename;
     }
 
     private createFileName = (path: string): string => {
@@ -30,10 +34,6 @@ export class CodeWriter {
             return path.replace(/\.vm/, '.asm');
         }
         return `${path}/${pathModule.basename(path)}.asm`;
-    };
-
-    setFileName = (fileName: string) => {
-        this.fileName = fileName;
     };
 
     private writeInit() {
@@ -45,7 +45,7 @@ export class CodeWriter {
         this.writeCall({ command: 'call', funcName: 'Sys.init', arg: '0' });
     }
 
-    write = (vm: VMLine) => {
+    writeLine = (vm: CommandType) => {
         switch (vm.command) {
             case 'push':
                 this.writePush(vm);
@@ -105,7 +105,7 @@ export class CodeWriter {
         this.ws.write(`${line}\r\n`);
     }
 
-    private writePush(vm: SegmentArgLine) {
+    private writePush(vm: TwoArg) {
         switch (vm.segment) {
             case 'constant':
                 this.writeLF(`@${vm.arg}`);
@@ -214,7 +214,7 @@ export class CodeWriter {
                 break;
             case 'static':
                 this.writeLF(
-                    `@${this.fileName
+                    `@${this._filename
                         .replace(/[\w\/\.]+\//, '')
                         .replace(/\.vm/, '')}.${parseInt(vm.arg, 10)}`
                 );
@@ -231,7 +231,7 @@ export class CodeWriter {
         }
     }
 
-    private writePop(vm: SegmentArgLine) {
+    private writePop(vm: TwoArg) {
         switch (vm.segment) {
             case 'local':
                 this.writeLF(`@${vm.arg}`);
@@ -324,7 +324,7 @@ export class CodeWriter {
                 this.writeLF('AM=M-1');
                 this.writeLF('D=M');
                 this.writeLF(
-                    `@${this.fileName
+                    `@${this._filename
                         .replace(/[\w\/\.]+\//, '')
                         .replace(/\.vm/, '')}.${parseInt(vm.arg as string, 10)}`
                 );
@@ -403,6 +403,7 @@ export class CodeWriter {
         if (this.funcName === null) {
             this.writeLF(`(${label})`);
         } else {
+            // グローバルでユニークなラベルを作成する
             this.writeLF(`(${this.funcName}$${label})`);
         }
     }
@@ -411,27 +412,26 @@ export class CodeWriter {
         if (this.funcName === null) {
             this.writeLF(`@${label}`);
         } else {
+            // グローバルでユニークなシンボルを作成する
             this.writeLF(`@${this.funcName}$${label}`);
         }
     }
 
-    private writeIfGoto(vm: ArgLine) {
+    private writeIfGoto(vm: OneArg) {
         this.writeLF('@SP');
         this.writeLF('M=M-1');
         this.writeLF('A=M');
         this.writeLF('D=M');
         this.writeAdress(vm.arg);
-        //this.writeLF(`@${vm.arg}`);
         this.writeLF('D;JNE');
     }
 
-    private writeGoto(vm: ArgLine) {
+    private writeGoto(vm: OneArg) {
         this.writeAdress(vm.arg);
-        //this.writeLF(`@${vm.arg}`);
         this.writeLF('0;JMP');
     }
 
-    private writeFunction(vm: FunctionLine) {
+    private writeFunction(vm: FunctionArg) {
         this.funcName = vm.funcName;
         this.writeLF(`(${vm.funcName})`);
         for (let i = 0; i < parseInt(vm.arg); i++) {
@@ -449,10 +449,18 @@ export class CodeWriter {
         this.writeLF('@R13');
         this.writeLF('M=D');
 
+        this.writeLF('@R13');
+        this.writeLF('A=M-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('A=A-1');
+        this.writeLF('D=M');
+        this.writeLF('@R14');
+        this.writeLF('M=D');
+
         this.writePop({ command: 'pop', segment: 'argument', arg: '0' });
 
-        this.writeLF('@SP');
-        this.writeLF('M=D');
         this.writeLF('@ARG');
         this.writeLF('D=M+1');
         this.writeLF('@SP');
@@ -488,22 +496,12 @@ export class CodeWriter {
         this.writeLF('@LCL');
         this.writeLF('M=D');
 
-        this.writeLF('@R13');
-        this.writeLF('A=M-1');
-        this.writeLF('A=A-1');
-        this.writeLF('A=A-1');
-        this.writeLF('A=A-1');
-        this.writeLF('A=A-1');
-        this.writeLF('D=M');
-        this.writeLF('@R14');
-        this.writeLF('M=D');
-
         this.writeLF('@R14');
         this.writeLF('A=M');
         this.writeLF('0;JMP');
     }
 
-    private writeCall(vm: FunctionLine) {
+    private writeCall(vm: FunctionArg) {
         this.writePush({
             command: 'push',
             segment: 'constant',
@@ -556,14 +554,8 @@ export class CodeWriter {
         this.writeLF('M=D');
 
         this.writeLF(`@${vm.funcName}`);
-        // if (this.funcName === null) {
-        //     this.writeLF(`(${vm.arg})`);
-        // } else {
-        //     this.writeLF(`(${this.funcName}$${vm.arg})`);
-        // }
         this.writeLF('0;JMP');
 
-        //this.writeLabel('return-address');
         this.writeLF(`(return-address_${this.returnAddress})`);
         this.returnAddress++;
     }

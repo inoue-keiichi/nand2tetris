@@ -1,27 +1,21 @@
-// export interface VMLine {
-//     command: Command | SegmentCommand | SegmentArgCommand;
-//     segment?: Segment;
-//     arg?: string;
-// }
+export type CommandType = NoneArg | OneArg | TwoArg | FunctionArg;
 
-export type VMLine = Line | ArgLine | SegmentArgLine | FunctionLine;
-
-export interface Line {
+export interface NoneArg {
     command: Command;
 }
 
-export interface ArgLine {
+export interface OneArg {
     command: ArgCommand;
     arg: string;
 }
 
-export interface SegmentArgLine {
+export interface TwoArg {
     command: SegmentArgCommand;
     segment: Segment;
     arg: string;
 }
 
-export interface FunctionLine {
+export interface FunctionArg {
     command: FunctionCommand;
     funcName: string;
     arg: string;

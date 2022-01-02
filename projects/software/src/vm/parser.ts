@@ -5,7 +5,7 @@ import {
     isArgCommand as isArgCommand,
     isSegmentArgCommand,
     isSegment,
-    VMLine,
+    CommandType,
     segmentArgCommand,
     command,
     argCommand,
@@ -63,7 +63,7 @@ export class Parser {
         return line.replace(/\/\/.*$/, '').replace(/\s+$/, '');
     }
 
-    getCommand = (): VMLine => {
+    getCommand = (): CommandType => {
         if (this.command === null) {
             throw new Error("you don't have more commands.");
         }
@@ -81,7 +81,7 @@ export class Parser {
         }
     };
 
-    private createFunction(command: string): VMLine {
+    private createFunction(command: string): CommandType {
         const match = Parser.FUNCTION_COMMAND.exec(command);
         if (match !== null && isFunctionCommand(match[1])) {
             return {
@@ -93,7 +93,7 @@ export class Parser {
         throw new Error('invalid vm line: ' + this.command);
     }
 
-    private createArgCommand(command: string): VMLine {
+    private createArgCommand(command: string): CommandType {
         const match = Parser.ARG_COMMAND.exec(command);
         if (match !== null && isArgCommand(match[1])) {
             return {
@@ -104,7 +104,7 @@ export class Parser {
         throw new Error('invalid vm line: ' + this.command);
     }
 
-    private createSegmentArgCommand(command: string): VMLine {
+    private createSegmentArgCommand(command: string): CommandType {
         const match = Parser.SEGMENT_ARG_COMMAND.exec(command);
         if (
             match !== null &&
@@ -120,7 +120,7 @@ export class Parser {
         throw new Error('invalid vm line: ' + this.command);
     }
 
-    private createCommand(command: string): VMLine {
+    private createCommand(command: string): CommandType {
         const match = Parser.COMMAND.exec(command);
         if (match !== null && isCommand(match[1])) {
             return {
