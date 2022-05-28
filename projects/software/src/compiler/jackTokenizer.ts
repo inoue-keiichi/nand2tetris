@@ -87,6 +87,9 @@ export class JackTokenizer {
                 toString: function () {
                     return `type: ${this.type}, token: ${this.keyword}`;
                 },
+                getValue: function () {
+                    return this.keyword;
+                },
             };
         } else if (isSymbol(this.token)) {
             return {
@@ -94,6 +97,9 @@ export class JackTokenizer {
                 symbol: this.token,
                 toString: function () {
                     return `type: ${this.type}, token: ${this.symbol}`;
+                },
+                getValue: function () {
+                    return this.symbol;
                 },
             };
         } else if (this.token.match(/^[A-Za-z0-9_]+$/)) {
@@ -103,23 +109,32 @@ export class JackTokenizer {
                 toString: function () {
                     return `type: ${this.type}, token: ${this.identifier}`;
                 },
+                getValue: function () {
+                    return this.identifier;
+                },
             };
         } else if (this.token.match(/^"[^\n"]+"$/)) {
             return {
-                type: 'string_const',
+                type: 'stringConstant',
                 stringVal: this.token,
                 toString: function () {
                     return `type: ${this.type}, token: ${this.stringVal}`;
+                },
+                getValue: function () {
+                    return this.stringVal;
                 },
             };
         } else if (this.token.includes('\n') || this.token.includes('"')) {
             throw new Error(`invalid token: ${this.token}`);
         } else if (this.token.match(/^[0-9]+$/)) {
             return {
-                type: 'int_const',
+                type: 'integerConstant',
                 intVal: this.token,
                 toString: function () {
                     return `type: ${this.type}, token: ${this.intVal}`;
+                },
+                getValue: function () {
+                    return this.intVal;
                 },
             };
         }

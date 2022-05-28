@@ -13,26 +13,31 @@ export type Token =
           type: 'keyword';
           keyword: KeyWord;
           toString: () => string;
+          getValue: () => string;
       }
     | {
           type: 'symbol';
           symbol: Symbol;
           toString: () => string;
+          getValue: () => string;
       }
     | {
           type: 'identifier';
           identifier: string;
           toString: () => string;
+          getValue: () => string;
       }
     | {
-          type: 'int_const';
+          type: 'integerConstant';
           intVal: string;
           toString: () => string;
+          getValue: () => string;
       }
     | {
-          type: 'string_const';
+          type: 'stringConstant';
           stringVal: string;
           toString: () => string;
+          getValue: () => string;
       };
 
 export function isSymbol(str: string): str is Symbol {
@@ -73,8 +78,8 @@ const tokenTypes = [
     'keyword',
     'symbol',
     'identifier',
-    'int_const',
-    'string_const',
+    'integerConstant',
+    'stringConstant',
 ] as const;
 
 const keyWords = [
