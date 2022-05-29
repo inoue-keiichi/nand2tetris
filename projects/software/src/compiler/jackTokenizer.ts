@@ -10,21 +10,22 @@ import {
 
 export class JackTokenizer {
     private path: string;
-    private file: string | undefined;
+    private file?: string;
     private index: number;
-    private token: string | null;
-    private symbol: string | null;
+    private token?: string;
+    //private symbol: string | null;
 
     constructor(path: string) {
         this.file = '';
         this.path = path;
         this.index = 0;
-        this.token = null;
-        this.symbol = null;
+        //this.token = null;
+        //this.symbol = null;
     }
 
     public async fetch() {
         this.file = await fs.readFile(this.path, 'utf-8');
+        this.file = this.file.replace(/\r\n/g, '\n');
         this.file = this.file.replace(/(\/\/.*|\/\*\*.*\*\/)\n/g, '\n');
     }
 
@@ -50,7 +51,15 @@ export class JackTokenizer {
         let token = '';
         while (char !== '') {
             char = this.file.charAt(this.index);
-            if (char === ' ' || char === '\n') {
+            if (mayBeStringConstant(token) && char === '"') {
+                token += char;
+                this.index++;
+                break;
+            } else if (mayBeStringConstant(token) && char !== '"') {
+                token += char;
+                this.index++;
+                continue;
+            } else if (char === ' ' || char === '\n') {
                 this.index++;
                 break;
             } else if (isSymbol(char)) {
@@ -61,6 +70,10 @@ export class JackTokenizer {
         }
         this.token = token;
         return token.length > 0;
+
+        function mayBeStringConstant(token: string): boolean {
+            return token.match(/^".*/) !== null;
+        }
     }
 
     private skipBlank(fileContent: string, index: number): number {
@@ -73,7 +86,7 @@ export class JackTokenizer {
     }
 
     public advance(): Token {
-        if (this.token === null) {
+        if (this.token === undefined) {
             return {
                 type: 'no_token',
                 toString: function () {
@@ -99,24 +112,23 @@ export class JackTokenizer {
                     return `type: ${this.type}, token: ${this.symbol}`;
                 },
                 getValue: function () {
-                    return this.symbol;
-                },
-            };
-        } else if (this.token.match(/^[A-Za-z0-9_]+$/)) {
-            return {
-                type: 'identifier',
-                identifier: this.token,
-                toString: function () {
-                    return `type: ${this.type}, token: ${this.identifier}`;
-                },
-                getValue: function () {
-                    return this.identifier;
+                    switch (this.symbol) {
+                        case '<':
+                            return '&lt;';
+                        case '>':
+                            return '&gt;';
+                        case '&':
+                            return '&amp;';
+                        default:
+                            return this.symbol;
+                    }
                 },
             };
         } else if (this.token.match(/^"[^\n"]+"$/)) {
+            console.log(this.token);
             return {
                 type: 'stringConstant',
-                stringVal: this.token,
+                stringVal: this.token.slice(1, -1),
                 toString: function () {
                     return `type: ${this.type}, token: ${this.stringVal}`;
                 },
@@ -135,6 +147,17 @@ export class JackTokenizer {
                 },
                 getValue: function () {
                     return this.intVal;
+                },
+            };
+        } else if (this.token.match(/^[A-Za-z0-9_]+$/)) {
+            return {
+                type: 'identifier',
+                identifier: this.token,
+                toString: function () {
+                    return `type: ${this.type}, token: ${this.identifier}`;
+                },
+                getValue: function () {
+                    return this.identifier;
                 },
             };
         }

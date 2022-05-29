@@ -1,11 +1,5 @@
 import { JackTokenizer } from './jackTokenizer';
-import {
-    isSymbol,
-    TokenType,
-    Token,
-    isTokenType,
-    isKeyWord,
-} from './type/terminalSymbol';
+import { Token } from './type/terminalSymbol';
 import * as fs from 'fs';
 
 type OuterTag =
@@ -48,21 +42,6 @@ export class CompilationEngine {
         });
     };
 
-    // private execute = (
-    //     tag: string,
-    //     isValid: (token: Token) => boolean
-    // ): void => {
-    //     if (!this.jackTokenizer.hasMoreTokens()) {
-    //         return;
-    //     }
-    //     const token = this.jackTokenizer.advance();
-    //     if (isValid(token)) {
-    //         this.compileClass();
-    //         return;
-    //     }
-    //     throw new Error(`invalid token: ${token}`);
-    // };
-
     private isType = (token: Token): boolean => {
         return (
             token.type === 'identifier' ||
@@ -79,7 +58,7 @@ export class CompilationEngine {
             token.type === 'stringConstant' ||
             this.isKeywordConstant(token) ||
             token.type === 'identifier' ||
-            this.isSubroutineCall(token) ||
+            //this.isSubroutineCall(token) ||
             (token.type === 'symbol' && token.symbol === '(') ||
             this.isUnaryOp(token)
         );
@@ -97,8 +76,15 @@ export class CompilationEngine {
         );
     };
 
-    private isSubroutineCall = (token: Token): boolean => {
-        return token.type === 'identifier';
+    private isSubroutineCall = (tokens: Token[]): boolean => {
+        if (tokens.length != 2) {
+            return false;
+        }
+        return (
+            tokens[0].type === 'identifier' &&
+            tokens[1].type === 'symbol' &&
+            (tokens[1].symbol === '(' || tokens[1].symbol === '.')
+        );
     };
 
     private isUnaryOp = (token: Token): boolean => {
@@ -134,6 +120,16 @@ export class CompilationEngine {
             return token;
         }
         throw new Error('no_token');
+    };
+
+    private fetchTokens = (num: number): Token[] => {
+        while (this.tmpTokens.length < num) {
+            if (!this.jackTokenizer.hasMoreTokens()) {
+                throw new Error('no more token');
+            }
+            this.tmpTokens.push(this.jackTokenizer.advance());
+        }
+        return this.tmpTokens.slice(0, num);
     };
 
     private createTag = (
@@ -365,9 +361,10 @@ export class CompilationEngine {
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '{'
             );
-            const token = this.fetchToken();
+            let token = this.fetchToken();
             while (token.type === 'keyword' && token.keyword === 'var') {
                 this.compileVarDec(indent);
+                token = this.fetchToken();
             }
             this.compileStatements(indent);
             this.compileToken(
@@ -421,7 +418,7 @@ export class CompilationEngine {
             );
         };
 
-        const outerTag = this.createOuterTag('classVarDec', indent);
+        const outerTag = this.createOuterTag('varDec', indent);
         this.ws.write(outerTag.start);
         compileInner(indent + 1);
         this.ws.write(outerTag.end);
@@ -706,8 +703,12 @@ export class CompilationEngine {
 
     private compileTerm = (indent: number) => {
         const compileInner = (indent: number) => {
-            const token = this.fetchToken();
+            const tokens = this.fetchTokens(2);
+            const token = tokens[0];
             switch (true) {
+                case this.isSubroutineCall(tokens):
+                    this.compileSubroutineCall(indent);
+                    return;
                 case token.type === 'integerConstant' ||
                     token.type === 'stringConstant' ||
                     this.isKeywordConstant(token):
@@ -729,9 +730,6 @@ export class CompilationEngine {
                                 token.type === 'symbol' && token.symbol === ']'
                         );
                     }
-                    return;
-                case this.isSubroutineCall(token):
-                    this.compileSubroutineCall(indent);
                     return;
                 case token.type === 'symbol' && token.symbol === '(':
                     this.compileToken(this.fetchToken(), indent);
