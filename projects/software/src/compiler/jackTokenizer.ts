@@ -1,32 +1,25 @@
 //import * as fs from 'fs';
 import { promises as fs } from 'fs';
-import {
-    isSymbol,
-    TokenType,
-    Token,
-    isTokenType,
-    isKeyWord,
-} from './type/terminalSymbol';
+import { isSymbol, Token, isKeyWord } from './type/terminalSymbol';
 
 export class JackTokenizer {
     private path: string;
     private file?: string;
     private index: number;
     private token?: string;
-    //private symbol: string | null;
 
     constructor(path: string) {
         this.file = '';
         this.path = path;
         this.index = 0;
-        //this.token = null;
-        //this.symbol = null;
     }
 
     public async fetch() {
         this.file = await fs.readFile(this.path, 'utf-8');
         this.file = this.file.replace(/\r\n/g, '\n');
         this.file = this.file.replace(/(\/\/.*|\/\*\*.*\*\/)\n/g, '\n');
+        this.file = this.file.replace(/(\/\*\*(.|\n)*\*\/\n)/g, '\n');
+        this.file = this.file.replace(/(\t|\v)/g, '');
     }
 
     public hasMoreTokens(): boolean {
@@ -125,7 +118,6 @@ export class JackTokenizer {
                 },
             };
         } else if (this.token.match(/^"[^\n"]+"$/)) {
-            console.log(this.token);
             return {
                 type: 'stringConstant',
                 stringVal: this.token.slice(1, -1),

@@ -1,9 +1,13 @@
 import * as fs from 'fs';
+import { createFileInfo } from '../util/fileInfoCreater';
 import { CompilationEngine } from './compilationEngine';
 import { JackTokenizer } from './jackTokenizer';
 
-const ce = new CompilationEngine(process.argv[2]);
-ce.start();
+createFileInfo(process.argv[2], 'jack').forEach((fileInfo) => {
+    const ce = new CompilationEngine(fileInfo.path);
+    ce.start();
+});
+
 // (async () => {
 //     await jt.fetch();
 //     while (jt.hasMoreTokens()) {

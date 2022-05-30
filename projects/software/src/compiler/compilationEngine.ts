@@ -1,6 +1,7 @@
 import { JackTokenizer } from './jackTokenizer';
 import { Token } from './type/terminalSymbol';
 import * as fs from 'fs';
+import { createFileInfo } from '../util/fileInfoCreater';
 
 type OuterTag =
     | 'class'
@@ -31,7 +32,6 @@ export class CompilationEngine {
     constructor(path: string) {
         this.jackTokenizer = new JackTokenizer(path);
         this.ws = fs.createWriteStream(path.replace(/\.jack$/, 'Test.xml'));
-        //console.log(path.replace(/\.jack$/, 'Test.xml'));
     }
 
     public start = async (): Promise<void> => {
@@ -163,11 +163,11 @@ export class CompilationEngine {
     };
 
     private compileToken = (
-        token: Token,
         indent: number,
-        isValid: (token: Token) => boolean = (token) => true,
+        isValid: (token: Token) => boolean = () => true,
         throwError: boolean = true
     ): boolean => {
+        const token = this.fetchToken();
         if (throwError && !isValid) {
             console.log('error');
             throw Error(`invalid position: ${token}`);
@@ -183,17 +183,11 @@ export class CompilationEngine {
         const compileInner = (): void => {
             const indent = 1;
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'keyword' && token.keyword === 'class'
             );
+            this.compileToken(indent, (token) => token.type === 'identifier');
             this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
-            this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '{'
             );
@@ -216,7 +210,6 @@ export class CompilationEngine {
                 token = this.fetchToken();
             }
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '}'
             );
@@ -231,37 +224,29 @@ export class CompilationEngine {
     private compileClassVarDec = (indent: number): void => {
         const compileInner = (indent: number): void => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) =>
                     token.type === 'keyword' &&
                     (token.keyword === 'static' || token.keyword === 'field'),
                 false
             );
-            this.compileToken(this.fetchToken(), indent, this.isType);
-            this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
+            this.compileToken(indent, this.isType);
+            this.compileToken(indent, (token) => token.type === 'identifier');
 
             //compile (',' varName)* ';'
             let token = this.fetchToken();
             while (token.type === 'symbol' && token.symbol === ',') {
                 this.compileToken(
-                    token,
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === ','
                 );
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'identifier'
                 );
                 token = this.fetchToken();
             }
             this.compileToken(
-                token,
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ';',
                 false
@@ -275,7 +260,7 @@ export class CompilationEngine {
     };
     private compileSubroutine = (indent: number) => {
         const compileInner = (indent: number) => {
-            this.compileToken(this.fetchToken(), indent, (token) => {
+            this.compileToken(indent, (token) => {
                 return (
                     token.type === 'keyword' &&
                     (token.keyword === 'constructor' ||
@@ -284,29 +269,18 @@ export class CompilationEngine {
                 );
             });
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) =>
                     this.isType(token) ||
                     (token.type === 'keyword' && token.keyword === 'void')
             );
+            this.compileToken(indent, (token) => token.type === 'identifier');
             this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
-            this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '('
             );
-            const token = this.fetchToken();
             this.compileParameterList(indent);
-            // if (this.isType(token)) {
-            //     this.compileParameterList(indent);
-            // }
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ')'
             );
@@ -321,23 +295,17 @@ export class CompilationEngine {
 
     private compileParameterList = (indent: number): void => {
         const compileInner = (indent: number): void => {
-            this.compileToken(this.fetchToken(), indent, this.isType);
-            this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
+            this.compileToken(indent, this.isType);
+            this.compileToken(indent, (token) => token.type === 'identifier');
             //compile (',' type varName)*
             let token = this.fetchToken();
             while (token.type === 'symbol' && token.symbol === ',') {
                 this.compileToken(
-                    token,
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === ','
                 );
-                this.compileToken(this.fetchToken(), indent, this.isType);
+                this.compileToken(indent, this.isType);
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'identifier'
                 );
@@ -357,7 +325,6 @@ export class CompilationEngine {
     private compileSubroutineBody = (indent: number) => {
         const compileInner = (indent: number): void => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '{'
             );
@@ -368,7 +335,6 @@ export class CompilationEngine {
             }
             this.compileStatements(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '}'
             );
@@ -383,35 +349,27 @@ export class CompilationEngine {
     private compileVarDec(indent: number) {
         const compileInner = (indent: number): void => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'keyword' && token.keyword === 'var',
                 false
             );
-            this.compileToken(this.fetchToken(), indent, this.isType);
-            this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
+            this.compileToken(indent, this.isType);
+            this.compileToken(indent, (token) => token.type === 'identifier');
 
             //compile (',' varName)* ';'
             let token = this.fetchToken();
             while (token.type === 'symbol' && token.symbol === ',') {
                 this.compileToken(
-                    token,
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === ','
                 );
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'identifier'
                 );
                 token = this.fetchToken();
             }
             this.compileToken(
-                token,
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ';',
                 false
@@ -466,37 +424,28 @@ export class CompilationEngine {
     private compileLetStatement = (indent: number): void => {
         const compileInner = (indent: number) => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'keyword' && token.keyword === 'let'
             );
-            this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
+            this.compileToken(indent, (token) => token.type === 'identifier');
             const token = this.fetchToken();
             if (token.type === 'symbol' && token.symbol === '[') {
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === '['
                 );
                 this.compileExpression(indent);
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === ']'
                 );
             }
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '='
             );
             this.compileExpression(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ';'
             );
@@ -511,48 +460,40 @@ export class CompilationEngine {
     private compileIfStatement = (indent: number): void => {
         const compileInner = (indent: number) => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'keyword' && token.keyword === 'if'
             );
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '('
             );
             this.compileExpression(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ')'
             );
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '{'
             );
             this.compileStatements(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '}'
             );
             const token = this.fetchToken();
             if (token.type === 'keyword' && token.keyword === 'else') {
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) =>
                         token.type === 'keyword' && token.keyword === 'else'
                 );
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === '{'
                 );
                 this.compileStatements(indent);
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === '}'
                 );
@@ -568,29 +509,24 @@ export class CompilationEngine {
     private compileWhileStatement = (indent: number): void => {
         const compileInner = (indent: number) => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'keyword' && token.keyword === 'while'
             );
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '('
             );
             this.compileExpression(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ')'
             );
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '{'
             );
             this.compileStatements(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === '}'
             );
@@ -605,13 +541,11 @@ export class CompilationEngine {
     private compileDoStatement = (indent: number): void => {
         const compileInner = (indent: number) => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'keyword' && token.keyword === 'do'
             );
             this.compileSubroutineCall(indent);
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ';'
             );
@@ -626,7 +560,6 @@ export class CompilationEngine {
     private compileReturnStatement = (indent: number): void => {
         const compileInner = (indent: number) => {
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) =>
                     token.type === 'keyword' && token.keyword === 'return'
@@ -636,7 +569,6 @@ export class CompilationEngine {
                 this.compileExpression(indent);
             }
             this.compileToken(
-                this.fetchToken(),
                 indent,
                 (token) => token.type === 'symbol' && token.symbol === ';'
             );
@@ -653,7 +585,7 @@ export class CompilationEngine {
             this.compileTerm(indent);
             let token = this.fetchToken();
             while (this.isOp(token)) {
-                this.compileToken(this.fetchToken(), indent, this.isOp);
+                this.compileToken(indent, this.isOp);
                 this.compileTerm(indent);
                 token = this.fetchToken();
             }
@@ -672,30 +604,20 @@ export class CompilationEngine {
         // (className | varName) '.' subroutineName '(' expressionList ')'
 
         // compile subroutineName | (className | varName)
-        this.compileToken(
-            this.fetchToken(),
-            indent,
-            (token) => token.type === 'identifier'
-        );
+        this.compileToken(indent, (token) => token.type === 'identifier');
         const token = this.fetchToken();
         if (token.type === 'symbol' && token.symbol === '.') {
             // compile '.' subroutineName
-            this.compileToken(this.fetchToken(), indent);
-            this.compileToken(
-                this.fetchToken(),
-                indent,
-                (token) => token.type === 'identifier'
-            );
+            this.compileToken(indent);
+            this.compileToken(indent, (token) => token.type === 'identifier');
         }
         // compile '(' expressionList ')'
         this.compileToken(
-            this.fetchToken(),
             indent,
             (token) => token.type === 'symbol' && token.symbol === '('
         );
         this.compileExpressionList(indent);
         this.compileToken(
-            this.fetchToken(),
             indent,
             (token) => token.type === 'symbol' && token.symbol === ')'
         );
@@ -712,19 +634,18 @@ export class CompilationEngine {
                 case token.type === 'integerConstant' ||
                     token.type === 'stringConstant' ||
                     this.isKeywordConstant(token):
-                    this.compileToken(this.fetchToken(), indent);
+                    this.compileToken(indent);
                     return;
                 case token.type === 'identifier':
-                    this.compileToken(this.fetchToken(), indent);
+                    this.compileToken(indent);
                     const forwardToken = this.fetchToken();
                     if (
                         forwardToken.type === 'symbol' &&
                         forwardToken.symbol === '['
                     ) {
-                        this.compileToken(this.fetchToken(), indent);
+                        this.compileToken(indent);
                         this.compileExpression(indent);
                         this.compileToken(
-                            this.fetchToken(),
                             indent,
                             (token) =>
                                 token.type === 'symbol' && token.symbol === ']'
@@ -732,17 +653,16 @@ export class CompilationEngine {
                     }
                     return;
                 case token.type === 'symbol' && token.symbol === '(':
-                    this.compileToken(this.fetchToken(), indent);
+                    this.compileToken(indent);
                     this.compileExpression(indent);
                     this.compileToken(
-                        this.fetchToken(),
                         indent,
                         (token) =>
                             token.type === 'symbol' && token.symbol === ')'
                     );
                     return;
                 case this.isUnaryOp(token):
-                    this.compileToken(this.fetchToken(), indent);
+                    this.compileToken(indent);
                     this.compileTerm(indent);
                     return;
                 default:
@@ -762,7 +682,6 @@ export class CompilationEngine {
             let token = this.fetchToken();
             while (token.type === 'symbol' && token.symbol === ',') {
                 this.compileToken(
-                    this.fetchToken(),
                     indent,
                     (token) => token.type === 'symbol' && token.symbol === ','
                 );
