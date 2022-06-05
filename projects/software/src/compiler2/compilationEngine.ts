@@ -2,6 +2,8 @@ import { JackTokenizer } from './jackTokenizer';
 import { Token } from './type/terminalSymbol';
 import * as fs from 'fs';
 import { createFileInfo } from '../util/fileInfoCreater';
+import { SymbolTable } from './symbolTable';
+import { Command, VMWriter } from './vmWriter';
 
 type OuterTag =
     | 'class'
@@ -21,17 +23,41 @@ type OuterTag =
     | 'subroutineCall'
     | 'expressionList';
 
+type Exp =
+    | { kind: 'num'; exp: number }
+    | { kind: 'val'; exp: string }
+    | { kind: 'exp1_op_exp2'; exp1: Exp; op: Command; exp2: Exp }
+    | { kind: 'opExp'; exp: Exp }
+    | { kind: 'function'; exps: Exp[] };
+// type Exp =
+//     | {
+//           kind: 'num';
+//           num: number;
+//       }
+//     | {
+//           kind: 'val';
+//           identifier: string;
+//       }
+//     | {
+//           kind: 'op';
+//           op: Command;
+//       };
+
 export class CompilationEngine {
     private static readonly INDENT_SPACES = 2;
 
     private jackTokenizer: JackTokenizer;
+    private vmWriter: VMWriter;
     private ws: fs.WriteStream;
 
     private tmpTokens: Token[] = [];
+    private symbolTable: SymbolTable;
 
     constructor(path: string) {
         this.jackTokenizer = new JackTokenizer(path);
+        this.vmWriter = new VMWriter(path);
         this.ws = fs.createWriteStream(path.replace(/\.jack$/, '.vm'));
+        this.symbolTable = new SymbolTable();
     }
 
     public start = async (): Promise<void> => {
@@ -58,7 +84,6 @@ export class CompilationEngine {
             token.type === 'stringConstant' ||
             this.isKeywordConstant(token) ||
             token.type === 'identifier' ||
-            //this.isSubroutineCall(token) ||
             (token.type === 'symbol' && token.symbol === '(') ||
             this.isUnaryOp(token)
         );
@@ -132,280 +157,127 @@ export class CompilationEngine {
         return this.tmpTokens.slice(0, num);
     };
 
-    private createTag = (
-        token: Token,
-        indent?: number
-    ): { token: Token; toString: () => string } => {
-        if (token.type === 'no_token') {
-            throw new Error('no_token');
-        }
-        const spaces = !indent ? '' : ' '.repeat(indent * 2);
-        return {
-            token: token,
-            toString: () =>
-                `${spaces}<${token.type}> ${token.getValue()} </${
-                    token.type
-                }>\n`,
-        };
-    };
-
-    private createOuterTag = (
-        outerTag: OuterTag,
-        indent?: number
-    ): { start: string; end: string } => {
-        const indentSpace = !indent
-            ? ''
-            : ' '.repeat(indent * CompilationEngine.INDENT_SPACES);
-        return {
-            start: `${indentSpace}<${outerTag}>\n`,
-            end: `${indentSpace}</${outerTag}>\n`,
-        };
-    };
-
     private compileToken = (
-        indent: number,
         isValid: (token: Token) => boolean = () => true,
         throwError: boolean = true
-    ): boolean => {
+    ): string | undefined => {
         const token = this.fetchToken();
+        if (token.type === 'no_token') {
+            throw Error('no token');
+        }
         if (throwError && !isValid) {
             console.log('error');
             throw Error(`invalid position: ${token}`);
         } else if (!isValid) {
-            return false;
+            return undefined;
         }
-        this.ws.write(this.createTag(token, indent).toString());
         this.tmpTokens.shift();
-        return true;
+        return token.getValue();
     };
 
     private compileClass = (): void => {
-        const compileInner = (): void => {
-            const indent = 1;
-            this.compileToken(
-                indent,
-                (token) => token.type === 'keyword' && token.keyword === 'class'
-            );
-            this.compileToken(indent, (token) => token.type === 'identifier');
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '{'
-            );
-            let token = this.fetchToken();
-            while (
-                token.type === 'keyword' &&
-                (token.keyword === 'static' || token.keyword === 'field')
-            ) {
-                this.compileClassVarDec(indent);
-                token = this.fetchToken();
-            }
+        this.compileToken(
+            (token) => token.type === 'keyword' && token.keyword === 'class'
+        );
+        const clazz = this.compileToken((token) => token.type === 'identifier');
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '{'
+        );
+        let token = this.fetchToken();
+        while (
+            token.type === 'keyword' &&
+            (token.keyword === 'static' || token.keyword === 'field')
+        ) {
+            this.compileClassVarDec();
             token = this.fetchToken();
-            while (
+        }
+        token = this.fetchToken();
+        while (
+            token.type === 'keyword' &&
+            (token.keyword === 'constructor' ||
+                token.keyword === 'function' ||
+                token.keyword === 'method')
+        ) {
+            this.compileSubroutine(clazz!);
+            token = this.fetchToken();
+        }
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '}'
+        );
+    };
+
+    private compileClassVarDec = (): void => {};
+
+    private compileSubroutine = (clazz: string) => {
+        this.compileToken((token) => {
+            return (
                 token.type === 'keyword' &&
                 (token.keyword === 'constructor' ||
                     token.keyword === 'function' ||
                     token.keyword === 'method')
-            ) {
-                this.compileSubroutine(indent);
-                token = this.fetchToken();
-            }
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '}'
             );
-        };
-
-        const outerTag = this.createOuterTag('class');
-        this.ws.write(outerTag.start);
-        compileInner();
-        this.ws.write(outerTag.end);
+        });
+        this.compileToken(
+            (token) =>
+                this.isType(token) ||
+                (token.type === 'keyword' && token.keyword === 'void')
+        );
+        const name = this.compileToken((token) => token.type === 'identifier');
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '('
+        );
+        const argNum = this.compileParameterList();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ')'
+        );
+        this.vmWriter.writeFunction(`${clazz}.${name!}`, argNum);
+        this.compileSubroutineBody();
     };
 
-    private compileClassVarDec = (indent: number): void => {
-        const compileInner = (indent: number): void => {
-            this.compileToken(
-                indent,
-                (token) =>
-                    token.type === 'keyword' &&
-                    (token.keyword === 'static' || token.keyword === 'field'),
-                false
-            );
-            this.compileToken(indent, this.isType);
-            this.compileToken(indent, (token) => token.type === 'identifier');
-
-            //compile (',' varName)* ';'
-            let token = this.fetchToken();
-            while (token.type === 'symbol' && token.symbol === ',') {
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === ','
-                );
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'identifier'
-                );
-                token = this.fetchToken();
-            }
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ';',
-                false
-            );
-        };
-
-        const classVarDecTag = this.createOuterTag('classVarDec', indent);
-        this.ws.write(classVarDecTag.start);
-        compileInner(indent + 1);
-        this.ws.write(classVarDecTag.end);
-    };
-    private compileSubroutine = (indent: number) => {
-        const compileInner = (indent: number) => {
-            this.compileToken(indent, (token) => {
-                return (
-                    token.type === 'keyword' &&
-                    (token.keyword === 'constructor' ||
-                        token.keyword === 'function' ||
-                        token.keyword === 'method')
-                );
-            });
-            this.compileToken(
-                indent,
-                (token) =>
-                    this.isType(token) ||
-                    (token.type === 'keyword' && token.keyword === 'void')
-            );
-            this.compileToken(indent, (token) => token.type === 'identifier');
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '('
-            );
-            this.compileParameterList(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ')'
-            );
-            this.compileSubroutineBody(indent);
-        };
-
-        const outerTag = this.createOuterTag('subroutineDec', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
+    private compileParameterList = (): number => {
+        return 0;
     };
 
-    private compileParameterList = (indent: number): void => {
-        const compileInner = (indent: number): void => {
-            this.compileToken(indent, this.isType);
-            this.compileToken(indent, (token) => token.type === 'identifier');
-            //compile (',' type varName)*
-            let token = this.fetchToken();
-            while (token.type === 'symbol' && token.symbol === ',') {
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === ','
-                );
-                this.compileToken(indent, this.isType);
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'identifier'
-                );
-                token = this.fetchToken();
-            }
-        };
-
-        const outerTag = this.createOuterTag('parameterList', indent);
-        this.ws.write(outerTag.start);
-        const token = this.fetchToken();
-        if (this.isType(token)) {
-            compileInner(indent + 1);
+    private compileSubroutineBody = () => {
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '{'
+        );
+        let token = this.fetchToken();
+        while (token.type === 'keyword' && token.keyword === 'var') {
+            this.compileVarDec();
+            token = this.fetchToken();
         }
-        this.ws.write(outerTag.end);
+        this.compileStatements();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '}'
+        );
     };
 
-    private compileSubroutineBody = (indent: number) => {
-        const compileInner = (indent: number): void => {
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '{'
-            );
-            let token = this.fetchToken();
-            while (token.type === 'keyword' && token.keyword === 'var') {
-                this.compileVarDec(indent);
-                token = this.fetchToken();
-            }
-            this.compileStatements(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '}'
-            );
-        };
+    private compileVarDec = () => {};
 
-        const outerTag = this.createOuterTag('subroutineBody', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
-    };
-
-    private compileVarDec(indent: number) {
-        const compileInner = (indent: number): void => {
-            this.compileToken(
-                indent,
-                (token) => token.type === 'keyword' && token.keyword === 'var',
-                false
-            );
-            this.compileToken(indent, this.isType);
-            this.compileToken(indent, (token) => token.type === 'identifier');
-
-            //compile (',' varName)* ';'
-            let token = this.fetchToken();
-            while (token.type === 'symbol' && token.symbol === ',') {
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === ','
-                );
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'identifier'
-                );
-                token = this.fetchToken();
-            }
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ';',
-                false
-            );
-        };
-
-        const outerTag = this.createOuterTag('varDec', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
-    }
-
-    private compileStatements = (indent: number): void => {
-        const compileInner = (indent: number): void => {
+    private compileStatements = () => {
+        const compileInner = (): void => {
             const token = this.fetchToken();
             if (token.type !== 'keyword') {
                 throw Error(`invalid position: ${token}`);
             }
+            console.log(token.keyword);
             switch (token.keyword) {
                 case 'let':
-                    return this.compileLetStatement(indent);
+                    return this.compileLetStatement();
                 case 'if':
-                    return this.compileIfStatement(indent);
+                    return this.compileIfStatement();
                 case 'while':
-                    return this.compileWhileStatement(indent);
+                    return this.compileWhileStatement();
                 case 'do':
-                    return this.compileDoStatement(indent);
+                    return this.compileDoStatement();
                 case 'return':
-                    return this.compileReturnStatement(indent);
+                    return this.compileReturnStatement();
                 default:
                     throw new Error(`invalid position: ${token}`);
             }
         };
 
-        const outerTag = this.createOuterTag('statements', indent);
-        this.ws.write(outerTag.start);
         let token = this.fetchToken();
         while (
             token.type === 'keyword' &&
@@ -415,287 +287,359 @@ export class CompilationEngine {
                 token.keyword === 'do' ||
                 token.keyword === 'return')
         ) {
-            compileInner(indent + 1);
+            compileInner();
             token = this.fetchToken();
         }
-        this.ws.write(outerTag.end);
     };
 
-    private compileLetStatement = (indent: number): void => {
-        const compileInner = (indent: number) => {
-            this.compileToken(
-                indent,
-                (token) => token.type === 'keyword' && token.keyword === 'let'
-            );
-            this.compileToken(indent, (token) => token.type === 'identifier');
-            const token = this.fetchToken();
-            if (token.type === 'symbol' && token.symbol === '[') {
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === '['
-                );
-                this.compileExpression(indent);
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === ']'
-                );
-            }
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '='
-            );
-            this.compileExpression(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ';'
-            );
-        };
+    private compileLetStatement = () => {};
 
-        const outerTag = this.createOuterTag('letStatement', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
+    private compileIfStatement = () => {};
+
+    private compileWhileStatement = () => {};
+
+    private compileDoStatement = () => {
+        this.compileToken(
+            (token) => token.type === 'keyword' && token.keyword === 'do'
+        );
+        this.compileSubroutineCall();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ';'
+        );
     };
 
-    private compileIfStatement = (indent: number): void => {
-        const compileInner = (indent: number) => {
-            this.compileToken(
-                indent,
-                (token) => token.type === 'keyword' && token.keyword === 'if'
-            );
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '('
-            );
-            this.compileExpression(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ')'
-            );
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '{'
-            );
-            this.compileStatements(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '}'
-            );
-            const token = this.fetchToken();
-            if (token.type === 'keyword' && token.keyword === 'else') {
-                this.compileToken(
-                    indent,
-                    (token) =>
-                        token.type === 'keyword' && token.keyword === 'else'
-                );
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === '{'
-                );
-                this.compileStatements(indent);
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === '}'
-                );
-            }
-        };
-
-        const outerTag = this.createOuterTag('ifStatement', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
+    private compileReturnStatement = () => {
+        this.compileToken(
+            (token) => token.type === 'keyword' && token.keyword === 'return'
+        );
+        const token = this.fetchToken();
+        if (this.isTerm(token)) {
+            this.compileExpression();
+        }
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ';'
+        );
+        this.vmWriter.writeReturn();
     };
 
-    private compileWhileStatement = (indent: number): void => {
-        const compileInner = (indent: number) => {
-            this.compileToken(
-                indent,
-                (token) => token.type === 'keyword' && token.keyword === 'while'
-            );
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '('
-            );
-            this.compileExpression(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ')'
-            );
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '{'
-            );
-            this.compileStatements(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === '}'
-            );
-        };
-
-        const outerTag = this.createOuterTag('whileStatement', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
-    };
-
-    private compileDoStatement = (indent: number): void => {
-        const compileInner = (indent: number) => {
-            this.compileToken(
-                indent,
-                (token) => token.type === 'keyword' && token.keyword === 'do'
-            );
-            this.compileSubroutineCall(indent);
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ';'
-            );
-        };
-
-        const outerTag = this.createOuterTag('doStatement', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
-    };
-
-    private compileReturnStatement = (indent: number): void => {
-        const compileInner = (indent: number) => {
-            this.compileToken(
-                indent,
-                (token) =>
-                    token.type === 'keyword' && token.keyword === 'return'
-            );
-            const token = this.fetchToken();
-            if (this.isTerm(token)) {
-                this.compileExpression(indent);
-            }
-            this.compileToken(
-                indent,
-                (token) => token.type === 'symbol' && token.symbol === ';'
-            );
-        };
-
-        const outerTag = this.createOuterTag('returnStatement', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
-    };
-
-    private compileExpression = (indent: number) => {
-        const compileInner = (indent: number) => {
-            this.compileTerm(indent);
-            let token = this.fetchToken();
-            while (this.isOp(token)) {
-                this.compileToken(indent, this.isOp);
-                this.compileTerm(indent);
-                token = this.fetchToken();
-            }
-        };
-
-        const outerTag = this.createOuterTag('expression', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
-    };
-
-    private compileSubroutineCall = (indent: number) => {
+    private compileSubroutineCall = () => {
         // compile the following expression.
         //
         // subroutineName '(' expressionList ')' |
         // (className | varName) '.' subroutineName '(' expressionList ')'
 
         // compile subroutineName | (className | varName)
-        this.compileToken(indent, (token) => token.type === 'identifier');
-        const token = this.fetchToken();
+        const name = this.compileToken((token) => token.type === 'identifier');
+        let token = this.fetchToken();
+        let subName;
         if (token.type === 'symbol' && token.symbol === '.') {
             // compile '.' subroutineName
-            this.compileToken(indent);
-            this.compileToken(indent, (token) => token.type === 'identifier');
+            this.compileToken();
+            subName = this.compileToken((token) => token.type === 'identifier');
         }
         // compile '(' expressionList ')'
         this.compileToken(
-            indent,
             (token) => token.type === 'symbol' && token.symbol === '('
         );
-        this.compileExpressionList(indent);
+        token = this.fetchToken();
+        const argNum = this.compileExpressionList();
         this.compileToken(
-            indent,
             (token) => token.type === 'symbol' && token.symbol === ')'
+        );
+        this.vmWriter.writeCall(
+            subName ? `${name}.${subName}` : `${name}`,
+            argNum
         );
     };
 
-    private compileTerm = (indent: number) => {
-        const compileInner = (indent: number) => {
-            const tokens = this.fetchTokens(2);
-            const token = tokens[0];
-            switch (true) {
-                case this.isSubroutineCall(tokens):
-                    this.compileSubroutineCall(indent);
-                    return;
-                case token.type === 'integerConstant' ||
-                    token.type === 'stringConstant' ||
-                    this.isKeywordConstant(token):
-                    this.compileToken(indent);
-                    return;
-                case token.type === 'identifier':
-                    this.compileToken(indent);
-                    const forwardToken = this.fetchToken();
-                    if (
-                        forwardToken.type === 'symbol' &&
-                        forwardToken.symbol === '['
-                    ) {
-                        this.compileToken(indent);
-                        this.compileExpression(indent);
-                        this.compileToken(
-                            indent,
-                            (token) =>
-                                token.type === 'symbol' && token.symbol === ']'
-                        );
-                    }
-                    return;
-                case token.type === 'symbol' && token.symbol === '(':
-                    this.compileToken(indent);
-                    this.compileExpression(indent);
-                    this.compileToken(
-                        indent,
-                        (token) =>
-                            token.type === 'symbol' && token.symbol === ')'
-                    );
-                    return;
-                case this.isUnaryOp(token):
-                    this.compileToken(indent);
-                    this.compileTerm(indent);
-                    return;
-                default:
-                    throw new Error(`invalid position: ${token}`);
-            }
-        };
-
-        const outerTag = this.createOuterTag('term', indent);
-        this.ws.write(outerTag.start);
-        compileInner(indent + 1);
-        this.ws.write(outerTag.end);
+    private compileExpressionList = (): number => {
+        let token = this.fetchToken();
+        if (token.type === 'symbol' && token.symbol === ')') {
+            return 0;
+        }
+        this.compileExpression();
+        let argNum = 1;
+        token = this.fetchToken();
+        while (token.type === 'symbol' && token.symbol === ',') {
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === ','
+            );
+            this.compileExpression();
+            token = this.fetchToken();
+            argNum++;
+        }
+        return argNum;
     };
 
-    private compileExpressionList = (indent: number) => {
-        const compileInner = (indent: number) => {
-            this.compileExpression(indent);
-            let token = this.fetchToken();
-            while (token.type === 'symbol' && token.symbol === ',') {
-                this.compileToken(
-                    indent,
-                    (token) => token.type === 'symbol' && token.symbol === ','
-                );
-                this.compileExpression(indent);
-                token = this.fetchToken();
+    private compileExpression = () => {
+        this.compileTerm();
+        let token = this.fetchToken();
+        while (this.isOp(token)) {
+            this.compileToken(this.isOp);
+            this.compileTerm();
+            if (token.type === 'symbol' && token.symbol === '*') {
+                this.vmWriter.writeCall('Math.multiply', 2);
+            } else {
+                this.vmWriter.writeArithmetic(this.convert(token));
             }
-        };
-
-        const outerTag = this.createOuterTag('expressionList', indent);
-        this.ws.write(outerTag.start);
-        const token = this.fetchToken();
-        if (this.isTerm(token)) {
-            compileInner(indent + 1);
+            token = this.fetchToken();
         }
-        this.ws.write(outerTag.end);
+    };
+
+    // private codeWrite = (tokens: Token[]) => {
+    //     if (tokens.length === 1) {
+    //         this.expWrite(tokens[0]);
+    //     } else if (
+    //         tokens.length > 3 &&
+    //         tokens[0].type === 'symbol' &&
+    //         this.isOp(tokens[0])
+    //     ) {
+    //         const opExp = this.extractOpExp(tokens);
+    //         const exp = this.analyzeOpExp(opExp);
+    //         this.codeWrite(exp.exp);
+    //         this.vmWriter.writeArithmetic(exp.op);
+    //         tokens.splice(0, 4);
+    //     } else if (
+    //         tokens.length > 4 &&
+    //         tokens[0].type === 'symbol' &&
+    //         this.isOp(tokens[0])
+    //     ) {
+    //         const exp1OpExp2 = this.extractExp1OpExp2(tokens);
+    //         const exp = this.analyzeExp1OpExp2(exp1OpExp2);
+    //         this.codeWrite(exp.exp1);
+    //         this.codeWrite(exp.exp2);
+    //         this.vmWriter.writeArithmetic(exp.op);
+    //     }
+    // };
+
+    // /**
+    //  * 最初に見つかった op (exp) を返す。
+    //  *
+    //  * @param tokens
+    //  * @returns op exp | op (exp)
+    //  */
+    // private extractOpExp = (tokens: Token[]): Token[] => {
+    //     if (tokens[1].type !== 'symbol' || tokens[1].symbol !== '(') {
+    //         const op = tokens.shift();
+    //         const opIndex = tokens.findIndex(this.isOp);
+    //         const exp = tokens.splice(0, opIndex);
+    //         return [op!, ...exp];
+    //     }
+    //     let startNum = 0;
+    //     let endNum = 0;
+    //     for (let i = 0; tokens.length; i++) {
+    //         let token = tokens[i];
+    //         if (token.type === 'symbol' && token.symbol === '(') {
+    //             startNum++;
+    //         } else if (token.type === 'symbol' && token.symbol === ')') {
+    //             endNum++;
+    //         }
+    //         if (startNum === endNum) {
+    //             return tokens.splice(0, i);
+    //         }
+    //     }
+    //     throw new Error(`failed to extract op exp.`);
+    // };
+
+    // private analyzeOpExp = (tokens: Token[]): { exp: Token[]; op: Command } => {
+    //     if (!this.isOp(tokens[0])) {
+    //         throw new Error('cannot search op exp.');
+    //     } else if (tokens[1].type !== 'symbol' || tokens[1].symbol !== '(') {
+    //         // op exp
+    //         return {
+    //             op: this.convert(tokens[0]),
+    //             exp: tokens.slice(1),
+    //         };
+    //     }
+    //     // op (exp)
+    //     let startNum = 1;
+    //     let endNum = 0;
+    //     for (let i = 2; tokens.length; i++) {
+    //         let token = tokens[i];
+    //         if (token.type === 'symbol' && token.symbol === '(') {
+    //             startNum++;
+    //         } else if (token.type === 'symbol' && token.symbol === ')') {
+    //             endNum++;
+    //         }
+    //         if (startNum === endNum) {
+    //             const copy = [...tokens];
+    //             copy.shift();
+    //             return {
+    //                 op: this.convert(tokens[0]),
+    //                 exp: tokens.slice(2, i),
+    //             };
+    //         }
+    //     }
+    //     throw new Error('cannot search op exp.');
+    // };
+
+    // /**
+    //  * (exp1 op exp2) を抽出する。抽出したものは tokens から消える。
+    //  *
+    //  * @param tokens
+    //  * @returns exp1 op exp2
+    //  */
+    // private extractExp1OpExp2 = (tokens: Token[]): Token[] => {
+    //     let startNum = 0;
+    //     let endNum = 0;
+    //     for (let i = 0; tokens.length; i++) {
+    //         let token = tokens[i];
+    //         if (token.type === 'symbol' && token.symbol === '(') {
+    //             startNum++;
+    //         } else if (token.type === 'symbol' && token.symbol === ')') {
+    //             endNum++;
+    //         }
+    //         if (startNum === endNum) {
+    //             return tokens.splice(0, i);
+    //         }
+    //     }
+    //     throw new Error(`failed to extract exp1 op exp2.`);
+    // };
+
+    // private analyzeExp1OpExp2 = (
+    //     tokens: Token[]
+    // ): {
+    //     exp1: Token[];
+    //     op: Command;
+    //     exp2: Token[];
+    // } => {
+    //     if (
+    //         tokens[0].type === 'integerConstant' ||
+    //         tokens[0].type === 'identifier'
+    //     ) {
+    //         const opIndex = tokens.findIndex(this.isOp);
+    //         return {
+    //             exp1: tokens.slice(0, opIndex),
+    //             exp2: tokens.slice(opIndex + 1),
+    //             op: this.convert(tokens[opIndex]),
+    //         };
+    //     } else if (tokens[0].type === 'symbol' && tokens[0].symbol === '(') {
+    //         const exp1OpExp2 = this.extractExp1OpExp2(tokens);
+    //         return {
+    //             exp1: exp1OpExp2,
+    //             exp2: tokens.slice(1),
+    //             op: this.convert(tokens[0]),
+    //         };
+    //     }
+    //     throw new Error('failed to analyze exp1 op exp2.');
+    // };
+
+    private convert = (token: Token): Command => {
+        if (token.type !== 'symbol') {
+            throw new Error(`invalid operation: ${token}`);
+        }
+        switch (token.symbol) {
+            case '+':
+                return 'add';
+            case '-':
+                return 'neg';
+            case '=':
+                return 'eq';
+            case '<':
+                return 'gt';
+            case '>':
+                return 'lt';
+            case '&':
+                return 'and';
+            case '|':
+                return 'or';
+            case '~':
+                return 'not';
+            default:
+                throw new Error(`invalid operation: ${token}`);
+        }
+    };
+
+    // private expWrite = (token: Token) => {
+    //     if (token.type === 'integerConstant') {
+    //         this.vmWriter.writePush('constant', parseInt(token.intVal));
+    //     } else if (token.type === 'stringConstant') {
+    //         // TODO
+    //     }
+    // };
+
+    private compileTerm = () => {
+        const tokens = this.fetchTokens(2);
+        const token = tokens[0];
+
+        if (this.isSubroutineCall(tokens)) {
+            this.compileSubroutineCall();
+            return;
+        } else if (token.type === 'integerConstant') {
+            this.compileToken();
+            this.vmWriter.writePush('constant', parseInt(token.intVal));
+            return;
+        } else if (token.type === 'stringConstant') {
+            this.compileToken();
+            return;
+        } else if (this.isKeywordConstant(token)) {
+            this.compileToken();
+            return;
+        } else if (token.type === 'identifier') {
+            this.compileToken();
+            const forwardToken = this.fetchToken();
+            if (forwardToken.type === 'symbol' && forwardToken.symbol === '[') {
+                this.compileToken();
+                this.compileExpression();
+                this.compileToken(
+                    (token) => token.type === 'symbol' && token.symbol === ']'
+                );
+            }
+            return;
+        } else if (token.type === 'symbol' && token.symbol === '(') {
+            this.compileToken();
+            const result = this.compileExpression();
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === ')'
+            );
+            return;
+        } else if (this.isUnaryOp(token)) {
+            this.compileToken();
+            this.compileTerm();
+            return;
+        }
+
+        // switch (true) {
+        //     case this.isSubroutineCall(tokens):
+        //         this.compileSubroutineCall();
+        //         return;
+        //     case token.type === 'integerConstant':
+        //         this.compileToken();
+        //         return;
+        //     case token.type === 'stringConstant':
+        //         this.compileToken();
+        //         return;
+        //     case this.isKeywordConstant(token):
+        //         this.compileToken();
+        //         return;
+        //     case token.type === 'identifier':
+        //         this.compileToken();
+        //         const forwardToken = this.fetchToken();
+        //         if (
+        //             forwardToken.type === 'symbol' &&
+        //             forwardToken.symbol === '['
+        //         ) {
+        //             this.compileToken();
+        //             this.compileExpression();
+        //             this.compileToken(
+        //                 (token) =>
+        //                     token.type === 'symbol' && token.symbol === ']'
+        //             );
+        //         }
+        //         return;
+        //     case token.type === 'symbol' && token.symbol === '(':
+        //         this.compileToken();
+        //         this.compileExpression();
+        //         this.compileToken(
+        //             (token) => token.type === 'symbol' && token.symbol === ')'
+        //         );
+        //         return;
+        //     case this.isUnaryOp(token):
+        //         this.compileToken();
+        //         this.compileTerm();
+        //         return;
+        //     default:
+        //         throw new Error(`invalid position: ${token}`);
+        // }
     };
 }

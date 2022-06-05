@@ -1,20 +1,21 @@
 export class SymbolTable {
-    private classHashTable: Map<
-        string,
-        { type: string; kind: 'static' | 'field'; index: number }
-    >;
-    private subroutineHashTableList: Map<
-        string,
-        { type: string; kind: 'arg' | 'var'; index: number }
-    >[];
+    private symbolTable: {
+        class: Map<
+            string,
+            { type: string; kind: 'static' | 'field'; index: number }
+        >;
+        subroutine: Map<
+            string,
+            { type: string; kind: 'arg' | 'var'; index: number }
+        >;
+    };
 
     constructor() {
-        this.classHashTable = new Map();
-        this.subroutineHashTableList = [new Map()];
+        this.symbolTable = { class: new Map(), subroutine: new Map() };
     }
 
     startSubroutine = (): void => {
-        this.subroutineHashTableList = [new Map()];
+        this.symbolTable.subroutine = new Map();
     };
 
     define = (
@@ -24,24 +25,17 @@ export class SymbolTable {
     ): void => {
         const index = this.varCount(kind);
         if (kind === 'static' || kind === 'field') {
-            this.classHashTable.set(name, { type, kind, index });
+            this.symbolTable.class.set(name, { type, kind, index });
             return;
         }
-        this.subroutineHashTableList[
-            this.subroutineHashTableList.length - 1
-        ].set(name, { type, kind, index });
+        this.symbolTable.subroutine.set(name, { type, kind, index });
     };
 
     private varCount = (kind: 'static' | 'field' | 'arg' | 'var') => {
         if (kind === 'static' || kind === 'field') {
-            return this.varCountOf(this.classHashTable, kind);
+            return this.varCountOf(this.symbolTable.class, kind);
         }
-        return this.varCountOf(
-            this.subroutineHashTableList[
-                this.subroutineHashTableList.length - 1
-            ],
-            kind
-        );
+        return this.varCountOf(this.symbolTable.subroutine, kind);
     };
 
     private varCountOf = (
@@ -66,12 +60,13 @@ export class SymbolTable {
     ):
         | {
               type: string;
-              kind: 'arg' | 'var';
+              kind: 'static' | 'field' | 'arg' | 'var';
               index: number;
           }
         | undefined => {
-        return this.subroutineHashTableList[
-            this.subroutineHashTableList.length - 1
-        ].get(name);
+        return (
+            this.symbolTable.subroutine.get(name) ||
+            this.symbolTable.class.get(name)
+        );
     };
 }
