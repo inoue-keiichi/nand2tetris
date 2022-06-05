@@ -23,26 +23,6 @@ type OuterTag =
     | 'subroutineCall'
     | 'expressionList';
 
-type Exp =
-    | { kind: 'num'; exp: number }
-    | { kind: 'val'; exp: string }
-    | { kind: 'exp1_op_exp2'; exp1: Exp; op: Command; exp2: Exp }
-    | { kind: 'opExp'; exp: Exp }
-    | { kind: 'function'; exps: Exp[] };
-// type Exp =
-//     | {
-//           kind: 'num';
-//           num: number;
-//       }
-//     | {
-//           kind: 'val';
-//           identifier: string;
-//       }
-//     | {
-//           kind: 'op';
-//           op: Command;
-//       };
-
 export class CompilationEngine {
     private static readonly INDENT_SPACES = 2;
 
@@ -386,144 +366,6 @@ export class CompilationEngine {
         }
     };
 
-    // private codeWrite = (tokens: Token[]) => {
-    //     if (tokens.length === 1) {
-    //         this.expWrite(tokens[0]);
-    //     } else if (
-    //         tokens.length > 3 &&
-    //         tokens[0].type === 'symbol' &&
-    //         this.isOp(tokens[0])
-    //     ) {
-    //         const opExp = this.extractOpExp(tokens);
-    //         const exp = this.analyzeOpExp(opExp);
-    //         this.codeWrite(exp.exp);
-    //         this.vmWriter.writeArithmetic(exp.op);
-    //         tokens.splice(0, 4);
-    //     } else if (
-    //         tokens.length > 4 &&
-    //         tokens[0].type === 'symbol' &&
-    //         this.isOp(tokens[0])
-    //     ) {
-    //         const exp1OpExp2 = this.extractExp1OpExp2(tokens);
-    //         const exp = this.analyzeExp1OpExp2(exp1OpExp2);
-    //         this.codeWrite(exp.exp1);
-    //         this.codeWrite(exp.exp2);
-    //         this.vmWriter.writeArithmetic(exp.op);
-    //     }
-    // };
-
-    // /**
-    //  * 最初に見つかった op (exp) を返す。
-    //  *
-    //  * @param tokens
-    //  * @returns op exp | op (exp)
-    //  */
-    // private extractOpExp = (tokens: Token[]): Token[] => {
-    //     if (tokens[1].type !== 'symbol' || tokens[1].symbol !== '(') {
-    //         const op = tokens.shift();
-    //         const opIndex = tokens.findIndex(this.isOp);
-    //         const exp = tokens.splice(0, opIndex);
-    //         return [op!, ...exp];
-    //     }
-    //     let startNum = 0;
-    //     let endNum = 0;
-    //     for (let i = 0; tokens.length; i++) {
-    //         let token = tokens[i];
-    //         if (token.type === 'symbol' && token.symbol === '(') {
-    //             startNum++;
-    //         } else if (token.type === 'symbol' && token.symbol === ')') {
-    //             endNum++;
-    //         }
-    //         if (startNum === endNum) {
-    //             return tokens.splice(0, i);
-    //         }
-    //     }
-    //     throw new Error(`failed to extract op exp.`);
-    // };
-
-    // private analyzeOpExp = (tokens: Token[]): { exp: Token[]; op: Command } => {
-    //     if (!this.isOp(tokens[0])) {
-    //         throw new Error('cannot search op exp.');
-    //     } else if (tokens[1].type !== 'symbol' || tokens[1].symbol !== '(') {
-    //         // op exp
-    //         return {
-    //             op: this.convert(tokens[0]),
-    //             exp: tokens.slice(1),
-    //         };
-    //     }
-    //     // op (exp)
-    //     let startNum = 1;
-    //     let endNum = 0;
-    //     for (let i = 2; tokens.length; i++) {
-    //         let token = tokens[i];
-    //         if (token.type === 'symbol' && token.symbol === '(') {
-    //             startNum++;
-    //         } else if (token.type === 'symbol' && token.symbol === ')') {
-    //             endNum++;
-    //         }
-    //         if (startNum === endNum) {
-    //             const copy = [...tokens];
-    //             copy.shift();
-    //             return {
-    //                 op: this.convert(tokens[0]),
-    //                 exp: tokens.slice(2, i),
-    //             };
-    //         }
-    //     }
-    //     throw new Error('cannot search op exp.');
-    // };
-
-    // /**
-    //  * (exp1 op exp2) を抽出する。抽出したものは tokens から消える。
-    //  *
-    //  * @param tokens
-    //  * @returns exp1 op exp2
-    //  */
-    // private extractExp1OpExp2 = (tokens: Token[]): Token[] => {
-    //     let startNum = 0;
-    //     let endNum = 0;
-    //     for (let i = 0; tokens.length; i++) {
-    //         let token = tokens[i];
-    //         if (token.type === 'symbol' && token.symbol === '(') {
-    //             startNum++;
-    //         } else if (token.type === 'symbol' && token.symbol === ')') {
-    //             endNum++;
-    //         }
-    //         if (startNum === endNum) {
-    //             return tokens.splice(0, i);
-    //         }
-    //     }
-    //     throw new Error(`failed to extract exp1 op exp2.`);
-    // };
-
-    // private analyzeExp1OpExp2 = (
-    //     tokens: Token[]
-    // ): {
-    //     exp1: Token[];
-    //     op: Command;
-    //     exp2: Token[];
-    // } => {
-    //     if (
-    //         tokens[0].type === 'integerConstant' ||
-    //         tokens[0].type === 'identifier'
-    //     ) {
-    //         const opIndex = tokens.findIndex(this.isOp);
-    //         return {
-    //             exp1: tokens.slice(0, opIndex),
-    //             exp2: tokens.slice(opIndex + 1),
-    //             op: this.convert(tokens[opIndex]),
-    //         };
-    //     } else if (tokens[0].type === 'symbol' && tokens[0].symbol === '(') {
-    //         const exp1OpExp2 = this.extractExp1OpExp2(tokens);
-    //         return {
-    //             exp1: exp1OpExp2,
-    //             exp2: tokens.slice(1),
-    //             op: this.convert(tokens[0]),
-    //         };
-    //     }
-    //     throw new Error('failed to analyze exp1 op exp2.');
-    // };
-
     private convert = (token: Token): Command => {
         if (token.type !== 'symbol') {
             throw new Error(`invalid operation: ${token}`);
@@ -549,14 +391,6 @@ export class CompilationEngine {
                 throw new Error(`invalid operation: ${token}`);
         }
     };
-
-    // private expWrite = (token: Token) => {
-    //     if (token.type === 'integerConstant') {
-    //         this.vmWriter.writePush('constant', parseInt(token.intVal));
-    //     } else if (token.type === 'stringConstant') {
-    //         // TODO
-    //     }
-    // };
 
     private compileTerm = () => {
         const tokens = this.fetchTokens(2);
@@ -598,48 +432,5 @@ export class CompilationEngine {
             this.compileTerm();
             return;
         }
-
-        // switch (true) {
-        //     case this.isSubroutineCall(tokens):
-        //         this.compileSubroutineCall();
-        //         return;
-        //     case token.type === 'integerConstant':
-        //         this.compileToken();
-        //         return;
-        //     case token.type === 'stringConstant':
-        //         this.compileToken();
-        //         return;
-        //     case this.isKeywordConstant(token):
-        //         this.compileToken();
-        //         return;
-        //     case token.type === 'identifier':
-        //         this.compileToken();
-        //         const forwardToken = this.fetchToken();
-        //         if (
-        //             forwardToken.type === 'symbol' &&
-        //             forwardToken.symbol === '['
-        //         ) {
-        //             this.compileToken();
-        //             this.compileExpression();
-        //             this.compileToken(
-        //                 (token) =>
-        //                     token.type === 'symbol' && token.symbol === ']'
-        //             );
-        //         }
-        //         return;
-        //     case token.type === 'symbol' && token.symbol === '(':
-        //         this.compileToken();
-        //         this.compileExpression();
-        //         this.compileToken(
-        //             (token) => token.type === 'symbol' && token.symbol === ')'
-        //         );
-        //         return;
-        //     case this.isUnaryOp(token):
-        //         this.compileToken();
-        //         this.compileTerm();
-        //         return;
-        //     default:
-        //         throw new Error(`invalid position: ${token}`);
-        // }
     };
 }
