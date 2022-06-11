@@ -32,12 +32,14 @@ export class CompilationEngine {
 
     private tmpTokens: Token[] = [];
     private symbolTable: SymbolTable;
+    private lableNum: number;
 
     constructor(path: string) {
         this.jackTokenizer = new JackTokenizer(path);
         this.vmWriter = new VMWriter(path);
         this.ws = fs.createWriteStream(path.replace(/\.jack$/, '.vm'));
         this.symbolTable = new SymbolTable();
+        this.lableNum = 0;
     }
 
     public start = async (): Promise<void> => {
@@ -155,6 +157,22 @@ export class CompilationEngine {
         return token.getValue();
     };
 
+    private compileKind = (): 'static' | 'field' | 'var' => {
+        const token = this.fetchToken();
+        if (token.type === 'no_token') {
+            throw Error('no token');
+        } else if (
+            token.type === 'keyword' &&
+            (token.keyword === 'static' ||
+                token.keyword === 'field' ||
+                token.keyword === 'var')
+        ) {
+            this.tmpTokens.shift();
+            return token.keyword;
+        }
+        throw Error(`invalid position: ${token}`);
+    };
+
     private compileClass = (): void => {
         this.compileToken(
             (token) => token.type === 'keyword' && token.keyword === 'class'
@@ -186,7 +204,29 @@ export class CompilationEngine {
         );
     };
 
-    private compileClassVarDec = (): void => {};
+    private compileClassVarDec = (): void => {
+        const kind = this.compileKind();
+        const type = this.compileToken(this.isType);
+        const name = this.compileToken((token) => token.type === 'identifier');
+        this.symbolTable.define(name!, type!, kind as 'static' | 'field');
+
+        //compile (',' varName)* ';'
+        let token = this.fetchToken();
+        while (token.type === 'symbol' && token.symbol === ',') {
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === ','
+            );
+            const name = this.compileToken(
+                (token) => token.type === 'identifier'
+            );
+            this.symbolTable.define(name!, type!, kind as 'static' | 'field');
+            token = this.fetchToken();
+        }
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ';',
+            false
+        );
+    };
 
     private compileSubroutine = (clazz: string) => {
         this.compileToken((token) => {
@@ -212,9 +252,38 @@ export class CompilationEngine {
         );
         this.vmWriter.writeFunction(`${clazz}.${name!}`, argNum);
         this.compileSubroutineBody();
+        this.symbolTable.startSubroutine();
     };
 
     private compileParameterList = (): number => {
+        const compileInner = (): number => {
+            const type = this.compileToken(this.isType);
+            const name = this.compileToken(
+                (token) => token.type === 'identifier'
+            );
+            this.symbolTable.define(name!, type!, 'arg');
+            //compile (',' type varName)*
+            let paramNum = 1;
+            let token = this.fetchToken();
+            while (token.type === 'symbol' && token.symbol === ',') {
+                this.compileToken(
+                    (token) => token.type === 'symbol' && token.symbol === ','
+                );
+                const type = this.compileToken(this.isType);
+                const name = this.compileToken(
+                    (token) => token.type === 'identifier'
+                );
+                this.symbolTable.define(name!, type!, 'arg');
+                token = this.fetchToken();
+                paramNum++;
+            }
+            return paramNum;
+        };
+
+        const token = this.fetchToken();
+        if (this.isType(token)) {
+            return compileInner();
+        }
         return 0;
     };
 
@@ -233,7 +302,29 @@ export class CompilationEngine {
         );
     };
 
-    private compileVarDec = () => {};
+    private compileVarDec = () => {
+        const kind = this.compileKind();
+        const type = this.compileToken(this.isType);
+        const name = this.compileToken((token) => token.type === 'identifier');
+        this.symbolTable.define(name!, type!, kind);
+
+        //compile (',' varName)* ';'
+        let token = this.fetchToken();
+        while (token.type === 'symbol' && token.symbol === ',') {
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === ','
+            );
+            const name = this.compileToken(
+                (token) => token.type === 'identifier'
+            );
+            this.symbolTable.define(name!, type!, kind);
+            token = this.fetchToken();
+        }
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ';',
+            false
+        );
+    };
 
     private compileStatements = () => {
         const compileInner = (): void => {
@@ -241,7 +332,6 @@ export class CompilationEngine {
             if (token.type !== 'keyword') {
                 throw Error(`invalid position: ${token}`);
             }
-            console.log(token.keyword);
             switch (token.keyword) {
                 case 'let':
                     return this.compileLetStatement();
@@ -272,11 +362,121 @@ export class CompilationEngine {
         }
     };
 
-    private compileLetStatement = () => {};
+    private compileLetStatement = () => {
+        this.compileToken(
+            (token) => token.type === 'keyword' && token.keyword === 'let'
+        );
+        const name = this.compileToken((token) => token.type === 'identifier');
+        const identifier = this.symbolTable.indentifierOf(name!);
+        if (!identifier) {
+            throw new Error(
+                `there is no indentifier in symbol table!: ${name}`
+            );
+        }
+        const token = this.fetchToken();
+        if (token.type === 'symbol' && token.symbol === '[') {
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === '['
+            );
+            this.compileExpression();
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === ']'
+            );
+        }
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '='
+        );
+        this.compileExpression();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ';'
+        );
+        this.vmWriter.writePop(
+            this.convertSegment(identifier.kind),
+            identifier.index
+        );
+    };
 
-    private compileIfStatement = () => {};
+    private convertSegment = (kind: 'static' | 'field' | 'arg' | 'var') => {
+        switch (kind) {
+            case 'static':
+                return 'static';
+            case 'field':
+                return 'this';
+            case 'arg':
+                return 'argument';
+            case 'var':
+                return 'local';
+            default:
+                throw new Error();
+        }
+    };
 
-    private compileWhileStatement = () => {};
+    private compileIfStatement = () => {
+        this.compileToken(
+            (token) => token.type === 'keyword' && token.keyword === 'if'
+        );
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '('
+        );
+        this.compileExpression();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ')'
+        );
+        const L1Num = this.lableNum++;
+        this.vmWriter.writeArithmetic('not');
+        this.vmWriter.writeIf(`L${L1Num}`);
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '{'
+        );
+        this.compileStatements();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '}'
+        );
+        const L2Num = this.lableNum++;
+        this.vmWriter.writeGoto(`L${L2Num}`);
+        this.vmWriter.writeLabel(`L${L1Num}`);
+        const token = this.fetchToken();
+        if (token.type === 'keyword' && token.keyword === 'else') {
+            this.compileToken(
+                (token) => token.type === 'keyword' && token.keyword === 'else'
+            );
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === '{'
+            );
+            this.compileStatements();
+            this.compileToken(
+                (token) => token.type === 'symbol' && token.symbol === '}'
+            );
+        }
+        this.vmWriter.writeLabel(`L${L2Num}`);
+    };
+
+    private compileWhileStatement = () => {
+        this.compileToken(
+            (token) => token.type === 'keyword' && token.keyword === 'while'
+        );
+        const startLabel = `L${this.lableNum++}`;
+        this.vmWriter.writeLabel(startLabel);
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '('
+        );
+        this.compileExpression();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === ')'
+        );
+        this.vmWriter.writeArithmetic('not');
+        const endLabel = `L${this.lableNum++}`;
+        this.vmWriter.writeIf(endLabel);
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '{'
+        );
+        this.compileStatements();
+        this.compileToken(
+            (token) => token.type === 'symbol' && token.symbol === '}'
+        );
+        this.vmWriter.writeGoto(startLabel);
+        this.vmWriter.writeLabel(endLabel);
+    };
 
     private compileDoStatement = () => {
         this.compileToken(
@@ -374,12 +574,12 @@ export class CompilationEngine {
             case '+':
                 return 'add';
             case '-':
-                return 'neg';
+                return 'sub';
             case '=':
                 return 'eq';
-            case '<':
-                return 'gt';
             case '>':
+                return 'gt';
+            case '<':
                 return 'lt';
             case '&':
                 return 'and';
@@ -401,16 +601,37 @@ export class CompilationEngine {
             return;
         } else if (token.type === 'integerConstant') {
             this.compileToken();
+            console.log(token.intVal);
             this.vmWriter.writePush('constant', parseInt(token.intVal));
             return;
         } else if (token.type === 'stringConstant') {
             this.compileToken();
             return;
-        } else if (this.isKeywordConstant(token)) {
+        } else if (token.type === 'keyword' && token.keyword === 'true') {
+            this.compileToken();
+            this.vmWriter.writePush('constant', 1);
+            this.vmWriter.writeArithmetic('neg');
+            return;
+        } else if (
+            token.type === 'keyword' &&
+            (token.keyword === 'false' || token.keyword === 'null')
+        ) {
+            this.compileToken();
+            this.vmWriter.writePush('constant', 0);
+            return;
+        } else if (token.type === 'keyword' && token.keyword === 'this') {
             this.compileToken();
             return;
         } else if (token.type === 'identifier') {
-            this.compileToken();
+            const name = this.compileToken();
+            const identifier = this.symbolTable.indentifierOf(name!);
+            if (!identifier) {
+                throw new Error('no symboltable');
+            }
+            this.vmWriter.writePush(
+                this.convertSegment(identifier.kind),
+                identifier.index
+            );
             const forwardToken = this.fetchToken();
             if (forwardToken.type === 'symbol' && forwardToken.symbol === '[') {
                 this.compileToken();
@@ -427,9 +648,13 @@ export class CompilationEngine {
                 (token) => token.type === 'symbol' && token.symbol === ')'
             );
             return;
-        } else if (this.isUnaryOp(token)) {
+        } else if (
+            token.type === 'symbol' &&
+            (token.symbol === '-' || token.symbol === '~')
+        ) {
             this.compileToken();
             this.compileTerm();
+            this.vmWriter.writeArithmetic(token.symbol === '-' ? 'neg' : 'not');
             return;
         }
     };

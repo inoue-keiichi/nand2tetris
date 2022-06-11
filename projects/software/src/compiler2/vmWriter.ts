@@ -2,7 +2,7 @@ import * as fs from 'fs';
 
 type Segment =
     | 'constant'
-    | 'arg'
+    | 'argument'
     | 'local'
     | 'static'
     | 'this'

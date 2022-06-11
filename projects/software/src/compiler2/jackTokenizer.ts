@@ -18,7 +18,7 @@ export class JackTokenizer {
         this.file = await fs.readFile(this.path, 'utf-8');
         this.file = this.file.replace(/\r\n/g, '\n');
         this.file = this.file.replace(/(\/\/.*|\/\*\*.*\*\/)\n/g, '\n');
-        this.file = this.file.replace(/(\/\*\*(.|\n)*\*\/\n)/g, '\n');
+        this.file = this.file.replace(/(\/\*\*(.|\n)*?\*\/\n)/g, '\n');
         this.file = this.file.replace(/(\t|\v)/g, '');
     }
 

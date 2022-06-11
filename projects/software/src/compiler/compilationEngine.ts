@@ -585,6 +585,7 @@ export class CompilationEngine {
             this.compileTerm(indent);
             let token = this.fetchToken();
             while (this.isOp(token)) {
+                console.log(token);
                 this.compileToken(indent, this.isOp);
                 this.compileTerm(indent);
                 token = this.fetchToken();
@@ -605,7 +606,7 @@ export class CompilationEngine {
 
         // compile subroutineName | (className | varName)
         this.compileToken(indent, (token) => token.type === 'identifier');
-        const token = this.fetchToken();
+        let token = this.fetchToken();
         if (token.type === 'symbol' && token.symbol === '.') {
             // compile '.' subroutineName
             this.compileToken(indent);
@@ -678,8 +679,12 @@ export class CompilationEngine {
 
     private compileExpressionList = (indent: number) => {
         const compileInner = (indent: number) => {
-            this.compileExpression(indent);
             let token = this.fetchToken();
+            if (token.type === 'symbol' && token.symbol === ')') {
+                return;
+            }
+            this.compileExpression(indent);
+            token = this.fetchToken();
             while (token.type === 'symbol' && token.symbol === ',') {
                 this.compileToken(
                     indent,
