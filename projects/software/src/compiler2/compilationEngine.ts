@@ -237,7 +237,7 @@ export class CompilationEngine {
                     token.keyword === 'method')
             );
         });
-        this.compileToken(
+        const type = this.compileToken(
             (token) =>
                 this.isType(token) ||
                 (token.type === 'keyword' && token.keyword === 'void')
@@ -246,24 +246,22 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '('
         );
-        const argNum = this.compileParameterList();
+        this.compileParameterList();
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === ')'
         );
-        this.vmWriter.writeFunction(`${clazz}.${name!}`, argNum);
-        this.compileSubroutineBody();
+        this.compileSubroutineBody(clazz, name!, type!);
         this.symbolTable.startSubroutine();
     };
 
-    private compileParameterList = (): number => {
-        const compileInner = (): number => {
+    private compileParameterList = (): void => {
+        const compileInner = () => {
             const type = this.compileToken(this.isType);
             const name = this.compileToken(
                 (token) => token.type === 'identifier'
             );
             this.symbolTable.define(name!, type!, 'arg');
             //compile (',' type varName)*
-            let paramNum = 1;
             let token = this.fetchToken();
             while (token.type === 'symbol' && token.symbol === ',') {
                 this.compileToken(
@@ -275,19 +273,20 @@ export class CompilationEngine {
                 );
                 this.symbolTable.define(name!, type!, 'arg');
                 token = this.fetchToken();
-                paramNum++;
             }
-            return paramNum;
         };
 
         const token = this.fetchToken();
         if (this.isType(token)) {
-            return compileInner();
+            compileInner();
         }
-        return 0;
     };
 
-    private compileSubroutineBody = () => {
+    private compileSubroutineBody = (
+        clazz: string,
+        func: string,
+        returnType: string
+    ) => {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '{'
         );
@@ -296,7 +295,11 @@ export class CompilationEngine {
             this.compileVarDec();
             token = this.fetchToken();
         }
-        this.compileStatements();
+        this.vmWriter.writeFunction(
+            `${clazz}.${func!}`,
+            this.symbolTable.varCount('var')
+        );
+        this.compileStatements(returnType);
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '}'
         );
@@ -326,8 +329,8 @@ export class CompilationEngine {
         );
     };
 
-    private compileStatements = () => {
-        const compileInner = (): void => {
+    private compileStatements = (returnType: string) => {
+        const compileInner = (returnType: string): void => {
             const token = this.fetchToken();
             if (token.type !== 'keyword') {
                 throw Error(`invalid position: ${token}`);
@@ -336,13 +339,16 @@ export class CompilationEngine {
                 case 'let':
                     return this.compileLetStatement();
                 case 'if':
-                    return this.compileIfStatement();
+                    return this.compileIfStatement(returnType);
                 case 'while':
-                    return this.compileWhileStatement();
+                    return this.compileWhileStatement(returnType);
                 case 'do':
-                    return this.compileDoStatement();
+                    return this.compileDoStatement(returnType);
                 case 'return':
-                    return this.compileReturnStatement();
+                    if (!returnType) {
+                        throw new Error('absent returnType');
+                    }
+                    return this.compileReturnStatement(returnType);
                 default:
                     throw new Error(`invalid position: ${token}`);
             }
@@ -357,7 +363,7 @@ export class CompilationEngine {
                 token.keyword === 'do' ||
                 token.keyword === 'return')
         ) {
-            compileInner();
+            compileInner(returnType);
             token = this.fetchToken();
         }
     };
@@ -411,7 +417,7 @@ export class CompilationEngine {
         }
     };
 
-    private compileIfStatement = () => {
+    private compileIfStatement = (returnType: string) => {
         this.compileToken(
             (token) => token.type === 'keyword' && token.keyword === 'if'
         );
@@ -428,7 +434,7 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '{'
         );
-        this.compileStatements();
+        this.compileStatements(returnType);
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '}'
         );
@@ -443,7 +449,7 @@ export class CompilationEngine {
             this.compileToken(
                 (token) => token.type === 'symbol' && token.symbol === '{'
             );
-            this.compileStatements();
+            this.compileStatements(returnType);
             this.compileToken(
                 (token) => token.type === 'symbol' && token.symbol === '}'
             );
@@ -451,7 +457,7 @@ export class CompilationEngine {
         this.vmWriter.writeLabel(`L${L2Num}`);
     };
 
-    private compileWhileStatement = () => {
+    private compileWhileStatement = (returnType: string) => {
         this.compileToken(
             (token) => token.type === 'keyword' && token.keyword === 'while'
         );
@@ -470,7 +476,7 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '{'
         );
-        this.compileStatements();
+        this.compileStatements(returnType);
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '}'
         );
@@ -478,7 +484,7 @@ export class CompilationEngine {
         this.vmWriter.writeLabel(endLabel);
     };
 
-    private compileDoStatement = () => {
+    private compileDoStatement = (returnType: string) => {
         this.compileToken(
             (token) => token.type === 'keyword' && token.keyword === 'do'
         );
@@ -486,9 +492,12 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === ';'
         );
+        if (returnType === 'void') {
+            this.vmWriter.writePop('temp', 0); // TODO: void の値はどのセグメントに入れるべき？
+        }
     };
 
-    private compileReturnStatement = () => {
+    private compileReturnStatement = (returnType: string) => {
         this.compileToken(
             (token) => token.type === 'keyword' && token.keyword === 'return'
         );
@@ -499,6 +508,9 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === ';'
         );
+        if (returnType === 'void') {
+            this.vmWriter.writePush('constant', 0);
+        }
         this.vmWriter.writeReturn();
     };
 

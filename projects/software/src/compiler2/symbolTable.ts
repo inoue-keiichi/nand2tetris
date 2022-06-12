@@ -31,7 +31,7 @@ export class SymbolTable {
         this.symbolTable.subroutine.set(name, { type, kind, index });
     };
 
-    private varCount = (kind: 'static' | 'field' | 'arg' | 'var') => {
+    varCount = (kind: 'static' | 'field' | 'arg' | 'var') => {
         if (kind === 'static' || kind === 'field') {
             return this.varCountOf(this.symbolTable.class, kind);
         }
