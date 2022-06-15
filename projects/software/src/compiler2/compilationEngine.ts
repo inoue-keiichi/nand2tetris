@@ -33,6 +33,7 @@ export class CompilationEngine {
     private tmpTokens: Token[] = [];
     private symbolTable: SymbolTable;
     private lableNum: number;
+    private clazz?: string;
 
     constructor(path: string) {
         this.jackTokenizer = new JackTokenizer(path);
@@ -173,11 +174,30 @@ export class CompilationEngine {
         throw Error(`invalid position: ${token}`);
     };
 
+    private compileSubroutineType = ():
+        | 'constructor'
+        | 'method'
+        | 'function' => {
+        const token = this.fetchToken();
+        if (token.type === 'no_token') {
+            throw Error('no token');
+        } else if (
+            token.type === 'keyword' &&
+            (token.keyword === 'constructor' ||
+                token.keyword === 'method' ||
+                token.keyword === 'function')
+        ) {
+            this.tmpTokens.shift();
+            return token.keyword;
+        }
+        throw Error(`invalid position: ${token}`);
+    };
+
     private compileClass = (): void => {
         this.compileToken(
             (token) => token.type === 'keyword' && token.keyword === 'class'
         );
-        const clazz = this.compileToken((token) => token.type === 'identifier');
+        this.clazz = this.compileToken((token) => token.type === 'identifier');
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '{'
         );
@@ -196,7 +216,7 @@ export class CompilationEngine {
                 token.keyword === 'function' ||
                 token.keyword === 'method')
         ) {
-            this.compileSubroutine(clazz!);
+            this.compileSubroutine();
             token = this.fetchToken();
         }
         this.compileToken(
@@ -228,15 +248,8 @@ export class CompilationEngine {
         );
     };
 
-    private compileSubroutine = (clazz: string) => {
-        this.compileToken((token) => {
-            return (
-                token.type === 'keyword' &&
-                (token.keyword === 'constructor' ||
-                    token.keyword === 'function' ||
-                    token.keyword === 'method')
-            );
-        });
+    private compileSubroutine = () => {
+        const keyword = this.compileSubroutineType();
         const type = this.compileToken(
             (token) =>
                 this.isType(token) ||
@@ -250,7 +263,7 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === ')'
         );
-        this.compileSubroutineBody(clazz, name!, type!);
+        this.compileSubroutineBody(this.clazz!, keyword, name!, type!);
         this.symbolTable.startSubroutine();
     };
 
@@ -284,6 +297,7 @@ export class CompilationEngine {
 
     private compileSubroutineBody = (
         clazz: string,
+        subroutineType: 'constructor' | 'function' | 'method',
         func: string,
         returnType: string
     ) => {
@@ -299,6 +313,17 @@ export class CompilationEngine {
             `${clazz}.${func!}`,
             this.symbolTable.varCount('var')
         );
+        if (subroutineType === 'constructor') {
+            this.vmWriter.writePush(
+                'constant',
+                this.symbolTable.varCount('field')
+            );
+            this.vmWriter.writeCall('Memory.alloc', 1);
+            this.vmWriter.writePop('pointer', 0);
+        } else if (subroutineType === 'method') {
+            this.vmWriter.writePush('argument', 0);
+            this.vmWriter.writePop('pointer', 0);
+        }
         this.compileStatements(returnType);
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '}'
@@ -522,6 +547,13 @@ export class CompilationEngine {
 
         // compile subroutineName | (className | varName)
         const name = this.compileToken((token) => token.type === 'identifier');
+        const identifier = this.symbolTable.indentifierOf(name!);
+        if (identifier) {
+            this.vmWriter.writePush(
+                this.convertSegment(identifier.kind),
+                identifier.index
+            );
+        }
         let token = this.fetchToken();
         let subName;
         if (token.type === 'symbol' && token.symbol === '.') {
@@ -533,24 +565,55 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '('
         );
-        token = this.fetchToken();
-        const argNum = this.compileExpressionList();
+        //token = this.fetchToken(); いらない気がする
+        const argNum = this.compileExpressionList(identifier, subName);
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === ')'
         );
-        this.vmWriter.writeCall(
-            subName ? `${name}.${subName}` : `${name}`,
-            argNum
-        );
+        if (identifier) {
+            // call method
+            this.vmWriter.writeCall(
+                `${identifier.type}.${subName}`,
+                argNum + 1
+            );
+        } else if (subName) {
+            // call function or constructor
+            this.vmWriter.writeCall(`${name}.${subName}`, argNum);
+        } else {
+            // call method itself
+            this.vmWriter.writeCall(`${this.clazz!}.${name}`, argNum + 1);
+        }
     };
 
-    private compileExpressionList = (): number => {
+    private compileExpressionList = (
+        identifier:
+            | {
+                  type: string;
+                  kind: 'var' | 'static' | 'field' | 'arg';
+                  index: number;
+              }
+            | undefined,
+        subName: string | undefined
+    ): number => {
+        let argNum = 0;
+        if (identifier) {
+            // call method
+            this.vmWriter.writePush(
+                this.convertSegment(identifier.kind),
+                identifier.index
+            );
+            argNum++;
+        } else if (!subName) {
+            // call method itself
+            this.vmWriter.writePush('pointer', 0);
+            argNum++;
+        }
         let token = this.fetchToken();
         if (token.type === 'symbol' && token.symbol === ')') {
             return 0;
         }
         this.compileExpression();
-        let argNum = 1;
+        argNum++;
         token = this.fetchToken();
         while (token.type === 'symbol' && token.symbol === ',') {
             this.compileToken(
@@ -633,6 +696,7 @@ export class CompilationEngine {
             return;
         } else if (token.type === 'keyword' && token.keyword === 'this') {
             this.compileToken();
+            this.vmWriter.writePush('pointer', 0);
             return;
         } else if (token.type === 'identifier') {
             const name = this.compileToken();
