@@ -1,7 +1,6 @@
 import { JackTokenizer } from './jackTokenizer';
 import { Token } from './type/terminalSymbol';
 import * as fs from 'fs';
-import { createFileInfo } from '../util/fileInfoCreater';
 import { SymbolTable } from './symbolTable';
 import { Command, VMWriter } from './vmWriter';
 
@@ -255,6 +254,9 @@ export class CompilationEngine {
                 this.isType(token) ||
                 (token.type === 'keyword' && token.keyword === 'void')
         );
+        if (keyword === 'method') {
+            this.symbolTable.define('this', keyword, 'arg');
+        }
         const name = this.compileToken((token) => token.type === 'identifier');
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '('
@@ -584,16 +586,13 @@ export class CompilationEngine {
         );
         if (identifier) {
             // call method
-            this.vmWriter.writeCall(
-                `${identifier.type}.${subName}`,
-                argNum + 1
-            );
+            this.vmWriter.writeCall(`${identifier.type}.${subName}`, argNum);
         } else if (subName) {
             // call function or constructor
             this.vmWriter.writeCall(`${name}.${subName}`, argNum);
         } else {
             // call method itself
-            this.vmWriter.writeCall(`${this.clazz!}.${name}`, argNum + 1);
+            this.vmWriter.writeCall(`${this.clazz!}.${name}`, argNum);
         }
     };
 
@@ -622,7 +621,7 @@ export class CompilationEngine {
         }
         let token = this.fetchToken();
         if (token.type === 'symbol' && token.symbol === ')') {
-            return 0;
+            return argNum;
         }
         this.compileExpression();
         argNum++;

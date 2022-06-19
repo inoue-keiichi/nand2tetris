@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { createFileInfo } from '../util/fileInfoCreater';
 import { CompilationEngine } from './compilationEngine';
 
