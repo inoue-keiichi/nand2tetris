@@ -421,7 +421,8 @@ export class CompilationEngine {
                 (token) => token.type === 'symbol' && token.symbol === ']'
             );
             this.vmWriter.writeArithmetic('add');
-            this.vmWriter.writePop('pointer', 1);
+            // let a[k] = a[k-1] + 1 のように pointer が上書きされることがあるので退避する
+            this.vmWriter.writePop('temp', 1);
             isArray = true;
         }
         this.compileToken(
@@ -432,6 +433,9 @@ export class CompilationEngine {
             (token) => token.type === 'symbol' && token.symbol === ';'
         );
         if (isArray) {
+            // 退避していた pointer を戻す
+            this.vmWriter.writePush('temp', 1);
+            this.vmWriter.writePop('pointer', 1);
             this.vmWriter.writePop('that', 0);
         } else {
             this.vmWriter.writePop(
