@@ -405,14 +405,22 @@ export class CompilationEngine {
             );
         }
         const token = this.fetchToken();
+        let isArray = false;
         if (token.type === 'symbol' && token.symbol === '[') {
             this.compileToken(
                 (token) => token.type === 'symbol' && token.symbol === '['
+            );
+            this.vmWriter.writePush(
+                this.convertSegment(identifier.kind),
+                identifier.index
             );
             this.compileExpression();
             this.compileToken(
                 (token) => token.type === 'symbol' && token.symbol === ']'
             );
+            this.vmWriter.writeArithmetic('add');
+            this.vmWriter.writePop('pointer', 1);
+            isArray = true;
         }
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === '='
@@ -421,10 +429,14 @@ export class CompilationEngine {
         this.compileToken(
             (token) => token.type === 'symbol' && token.symbol === ';'
         );
-        this.vmWriter.writePop(
-            this.convertSegment(identifier.kind),
-            identifier.index
-        );
+        if (isArray) {
+            this.vmWriter.writePop('that', 0);
+        } else {
+            this.vmWriter.writePop(
+                this.convertSegment(identifier.kind),
+                identifier.index
+            );
+        }
     };
 
     private convertSegment = (kind: 'static' | 'field' | 'arg' | 'var') => {
@@ -634,6 +646,8 @@ export class CompilationEngine {
             this.compileTerm();
             if (token.type === 'symbol' && token.symbol === '*') {
                 this.vmWriter.writeCall('Math.multiply', 2);
+            } else if (token.type === 'symbol' && token.symbol === '/') {
+                this.vmWriter.writeCall('Math.divide', 2);
             } else {
                 this.vmWriter.writeArithmetic(this.convert(token));
             }
@@ -676,11 +690,16 @@ export class CompilationEngine {
             return;
         } else if (token.type === 'integerConstant') {
             this.compileToken();
-            console.log(token.intVal);
             this.vmWriter.writePush('constant', parseInt(token.intVal));
             return;
         } else if (token.type === 'stringConstant') {
             this.compileToken();
+            this.vmWriter.writePush('constant', token.stringVal.length);
+            this.vmWriter.writeCall('String.new', 1);
+            for (let c of token.stringVal) {
+                this.vmWriter.writePush('constant', c.charCodeAt(0));
+                this.vmWriter.writeCall('String.appendChar', 2);
+            }
             return;
         } else if (token.type === 'keyword' && token.keyword === 'true') {
             this.compileToken();
@@ -715,6 +734,9 @@ export class CompilationEngine {
                 this.compileToken(
                     (token) => token.type === 'symbol' && token.symbol === ']'
                 );
+                this.vmWriter.writeArithmetic('add');
+                this.vmWriter.writePop('pointer', 1);
+                this.vmWriter.writePush('that', 0);
             }
             return;
         } else if (token.type === 'symbol' && token.symbol === '(') {
