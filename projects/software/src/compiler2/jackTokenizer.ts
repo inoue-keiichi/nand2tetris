@@ -28,11 +28,6 @@ export class JackTokenizer {
         }
 
         this.index = this.skipBlank(this.file, this.index);
-        // let char: string = this.file.charAt(this.index);
-        // while (char === ' ' || char === '\n') {
-        //     this.index++;
-        //     char = this.file.charAt(this.index);
-        // }
         let char: string = this.file.charAt(this.index);
 
         if (isSymbol(char)) {
