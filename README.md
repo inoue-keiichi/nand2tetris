@@ -11,4 +11,4 @@
   - コンパイラ
   - VM
 # 開発言語
-Type Script
+TypeScript
